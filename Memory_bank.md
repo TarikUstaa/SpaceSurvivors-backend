@@ -173,6 +173,7 @@ which happens at the end of every run.
 | — | `9878350` | `docs/ogrenme-rehberi.md` — Spring Boot learning guide over this codebase |
 | — | `8f1c9f7` | this file |
 | F5a | game repo `18d0745` | **Unity client connected.** `HttpProfileStore` / `ProfileMerge` / `BackendConfig` / `BackendBootstrap` + an editor settings window, all behind the game's existing `IProfileStore` seam. Verified end to end against this backend: the real save (wallet 481) now round-trips through `players`. |
+| F5b | game repo `fa83b63` | **Leaderboard connected.** `HttpLeaderboardStore` posts finished runs to `/v1/scores`. Verified: upsert-if-better replaces the single row in place. `GET /v1/scores` still has no client — nothing in the game displays a board yet. |
 
 **Verification approach:** every phase curl-tested end to end against local Postgres
 (F2: 6 scenarios, F3: 15), test rows purged afterwards, then walked through in Postman
