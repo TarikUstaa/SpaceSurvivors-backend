@@ -3,9 +3,6 @@
 Bu dosya, `src/main/java/com/tarikusta/spacesurvivors/` altındaki 13 sınıfın
 **neden** öyle yazıldığını anlatır. IntelliJ'de kodu açıp yanına bu dosyayı koy.
 
-Toplam 762 satır kod var. Az görünüyor çünkü Spring Boot işin çoğunu üstleniyor —
-rehberin amacı "Spring nereyi hallediyor, ben neyi yazıyorum" ayrımını netleştirmek.
-
 ---
 
 ## 1. Neden katmanlar var?

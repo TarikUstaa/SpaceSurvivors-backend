@@ -171,6 +171,8 @@ which happens at the end of every run.
 | F2 | `25dad9e` | `DevAuthFilter`, `GET/PUT /v1/profile`, optimistic locking, `ApiException` + handler |
 | F3 | `d5e71ba` | `POST/GET /v1/scores`, bean validation, upsert-if-better, rank + board |
 | — | `9878350` | `docs/ogrenme-rehberi.md` — Spring Boot learning guide over this codebase |
+| — | `8f1c9f7` | this file |
+| F5a | game repo `18d0745` | **Unity client connected.** `HttpProfileStore` / `ProfileMerge` / `BackendConfig` / `BackendBootstrap` + an editor settings window, all behind the game's existing `IProfileStore` seam. Verified end to end against this backend: the real save (wallet 481) now round-trips through `players`. |
 
 **Verification approach:** every phase curl-tested end to end against local Postgres
 (F2: 6 scenarios, F3: 15), test rows purged afterwards, then walked through in Postman
