@@ -40,9 +40,24 @@ public class PlayerService {
     }
 
     /**
-     * The player behind this caller, creating the profile the first time a device
-     * appears. Runs on reads as well as writes: first contact is what makes someone a
-     * player, and it is the only honest moment to stamp {@code first_login_date}.
+     * The player behind this caller, if there already is one.
+     *
+     * <p>Read-only, and used by every endpoint that only reads. That distinction matters:
+     * {@code GET} is defined as safe, and a read path that quietly created rows would
+     * break that promise, put a write on the hot path of the busiest requests, and let
+     * anyone fill the table by sending fresh device ids at it.</p>
+     */
+    @Transactional(readOnly = true)
+    public Optional<UUID> resolve(Caller caller) {
+        return players.findByDeviceId(caller.deviceId()).map(PlayerProfile::getPlayerId);
+    }
+
+    /**
+     * The player behind this caller, creating the profile if this device is new.
+     *
+     * <p>Only for endpoints that were going to write anyway — plus {@code GET /v1/player},
+     * which is the endpoint whose entire job is "who am I", and so is the one honest place
+     * to stamp {@code first_login_date}.</p>
      */
     @Transactional
     public UUID resolveOrCreate(Caller caller) {

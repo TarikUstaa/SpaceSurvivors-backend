@@ -1,9 +1,9 @@
 package com.tarikusta.spacesurvivors.leaderboard;
 
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
@@ -11,19 +11,25 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Four queries, four different techniques — which is roughly the whole range Spring Data
- * offers, and a fair picture of when each is the right reach.
+ * Four queries, four different techniques — roughly the whole range Spring Data offers,
+ * and a fair picture of when each is the right reach.
+ *
+ * <p>Extends the bare {@link Repository} marker rather than {@code JpaRepository}, so the
+ * only methods that exist are the four below. That is deliberate: a leaderboard row must
+ * only ever be written through {@link #saveBest}, which enforces upsert-if-better. An
+ * inherited {@code save(entity)} would quietly overwrite a player's best with a worse run,
+ * and nothing in the type system would object. A repository should expose the operations
+ * the domain allows, not every operation the framework can generate.</p>
  */
 public interface LeaderboardEntryRepository
-        extends JpaRepository<LeaderboardEntry, LeaderboardEntryId> {
+        extends Repository<LeaderboardEntry, LeaderboardEntryId> {
 
     /**
      * This player's stored best time in a mode.
      *
      * <p>A scalar JPQL projection rather than {@code findByPlayerIdAndMode}: the caller
      * only compares a number, so loading and managing a whole entity to read one field
-     * off it would be work for nothing. ({@code findById}, {@code save} and the rest still
-     * arrive derived from {@link JpaRepository} without being written here at all.)</p>
+     * off it would be work for nothing.</p>
      */
     @Query("""
             SELECT e.survivedSeconds FROM LeaderboardEntry e

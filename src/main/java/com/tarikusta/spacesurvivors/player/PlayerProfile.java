@@ -7,6 +7,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -60,6 +61,35 @@ public class PlayerProfile {
         this.deviceId = deviceId;
         this.displayName = displayName;
         this.lastIp = lastIp;
+    }
+
+
+    /**
+     * Identity is the primary key, and nothing else.
+     *
+     * <p>JPA needs these to be stable: the persistence context uses them to recognise an
+     * instance it already holds, and a {@code Set} of entities silently misbehaves without
+     * them. Comparing mutable fields instead would mean an entity changed identity the
+     * moment someone edited it.</p>
+     *
+     * <p>{@code hashCode} is a constant rather than {@code id.hashCode()} on purpose: it
+     * has to stay the same across an entity's whole life, including before an id exists.
+     * A collection would otherwise lose an element the instant it was persisted.</p>
+     */
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof PlayerProfile that)) {
+            return false;
+        }
+        return playerId != null && Objects.equals(playerId, that.playerId);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
     }
 
     public UUID getPlayerId() {

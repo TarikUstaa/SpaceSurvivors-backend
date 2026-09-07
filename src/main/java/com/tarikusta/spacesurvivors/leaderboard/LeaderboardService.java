@@ -64,8 +64,13 @@ public class LeaderboardService {
 
         UUID playerId = players.resolveOrCreate(caller);
 
-        double previousBest = board.findPersonalBest(playerId, mode).orElse(-1.0);
-        boolean isNewRecord = run.survivedSeconds() > previousBest;
+        // Narrow to float first: survived_seconds is a real column, so this is the value
+        // that will actually be stored. Comparing the wider incoming double against a
+        // narrowed round-trip would report a new record every time the same run was
+        // resubmitted.
+        float submitted = (float) run.survivedSeconds();
+        float previousBest = board.findPersonalBest(playerId, mode).orElse(-1.0).floatValue();
+        boolean isNewRecord = submitted > previousBest;
         if (isNewRecord) {
             board.saveBest(playerId, mode, run.survivedSeconds(), run.kills(),
                     run.reachedLevel(), run.bossesDefeated());
@@ -78,8 +83,14 @@ public class LeaderboardService {
                 .orElseGet(() -> new LeaderboardDtos.SubmitResult(run.survivedSeconds(), isNewRecord, null));
     }
 
-    /** Top {@code limit} entries of a mode, plus where the caller sits. */
-    @Transactional
+    /**
+     * Top {@code limit} entries of a mode, plus where the caller sits.
+     *
+     * <p>Read-only: a caller the server has never seen simply has no standing, which is
+     * the truthful answer. Creating a profile so that someone browsing the board can be
+     * told they are unranked would be a write on the most-read endpoint in the API.</p>
+     */
+    @Transactional(readOnly = true)
     public LeaderboardDtos.Board board(Caller caller, String mode, int limit) {
         String normalised = normaliseMode(mode);
         int capped = Math.clamp(limit, 1, MAX_BOARD_SIZE);
@@ -91,7 +102,8 @@ public class LeaderboardService {
                     row.survivedSeconds(), row.kills(), row.reachedLevel()));
         }
 
-        LeaderboardDtos.Me me = board.findStanding(players.resolveOrCreate(caller), normalised)
+        LeaderboardDtos.Me me = players.resolve(caller)
+                .flatMap(playerId -> board.findStanding(playerId, normalised))
                 .map(standing -> new LeaderboardDtos.Me(standing.getRank(), standing.getSeconds()))
                 .orElse(null);
         return new LeaderboardDtos.Board(normalised, entries, me);

@@ -50,6 +50,7 @@ class LeaderboardServiceTest {
         service = new LeaderboardService(board, players);
 
         when(players.resolveOrCreate(any())).thenReturn(PLAYER);
+        when(players.resolve(any())).thenReturn(Optional.of(PLAYER));
     }
 
     private static LeaderboardDtos.Submission run(String mode, double seconds, int kills) {
@@ -188,6 +189,18 @@ class LeaderboardServiceTest {
             assertThat(result.entries()).extracting(LeaderboardDtos.BoardEntry::displayName)
                     .containsExactly("Ada", "Kaptan");
             assertThat(result.me().rank()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("browsing the board never creates a player")
+        void doesNotCreateAProfileForAnUnknownCaller() {
+            when(players.resolve(any())).thenReturn(Optional.empty());
+            when(board.topEntries(anyString(), any(Pageable.class))).thenReturn(List.of());
+
+            assertThat(service.board(CALLER, "infinite", 10).me()).isNull();
+
+            // The point of splitting resolve from resolveOrCreate: a read must not write.
+            verify(players, never()).resolveOrCreate(any());
         }
 
         @Test

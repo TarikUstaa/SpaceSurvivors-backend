@@ -38,10 +38,15 @@ public class ProgressService {
     /**
      * GET /v1/progress. A player with no save is a 404, not an empty object: the client
      * has to tell "nothing stored yet, upload mine" apart from "stored, and it is empty".
+     *
+     * <p>An unrecognised device gets the same 404 rather than a freshly minted profile.
+     * Reading someone's save is not the moment to decide they exist, and creating rows
+     * from a read would let anyone grow the table by inventing device ids.</p>
      */
-    @Transactional
+    @Transactional(readOnly = true)
     public ProgressDtos.ProgressView load(Caller caller) {
-        UUID playerId = players.resolveOrCreate(caller);
+        UUID playerId = players.resolve(caller)
+                .orElseThrow(() -> new NotFoundException("no progress stored yet"));
         return progress.findById(playerId)
                 .map(row -> new ProgressDtos.ProgressView(json.readTree(row.getProgressData()), row.getVersion()))
                 .orElseThrow(() -> new NotFoundException("no progress stored yet"));
