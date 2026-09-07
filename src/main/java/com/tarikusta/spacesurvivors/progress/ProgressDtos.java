@@ -32,9 +32,17 @@ public final class ProgressDtos {
 
     /** 200 from PUT — the version the write produced. */
     public record SaveAccepted(int version) {
+
+        public static SaveAccepted of(ProgressService.SaveOutcome.Accepted accepted) {
+            return new SaveAccepted(accepted.version());
+        }
     }
 
     /** 409 from PUT — the caller's version was stale; here is what the server holds. */
     public record SaveConflict(int serverVersion, JsonNode progress) {
+
+        public static SaveConflict of(ProgressService.SaveOutcome.Conflict conflict) {
+            return new SaveConflict(conflict.serverVersion(), conflict.serverProgress());
+        }
     }
 }

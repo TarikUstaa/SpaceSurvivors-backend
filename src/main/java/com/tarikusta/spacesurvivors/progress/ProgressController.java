@@ -32,16 +32,21 @@ public class ProgressController {
         return progress.load(caller);
     }
 
-    /** PUT /v1/progress -> 200 {version}, or 409 {serverVersion, progress} on a stale write. */
+    /**
+     * PUT /v1/progress -> 200 {version}, or 409 {serverVersion, progress} on a stale write.
+     *
+     * <p>The only decision here is which status each outcome deserves. Building the bodies
+     * belongs to the response types themselves, so this method never reaches inside an
+     * outcome to read its fields.</p>
+     */
     @PutMapping
-    public ResponseEntity<?> save(@RequestAttribute(Caller.ATTR) Caller caller,
-                                  @Valid @RequestBody ProgressDtos.SaveRequest body) {
+    public ResponseEntity<Object> save(@RequestAttribute(Caller.ATTR) Caller caller,
+                                       @Valid @RequestBody ProgressDtos.SaveRequest body) {
         return switch (progress.save(caller, body)) {
-            case ProgressService.SaveOutcome.Accepted a ->
-                    ResponseEntity.ok(new ProgressDtos.SaveAccepted(a.version()));
-            case ProgressService.SaveOutcome.Conflict c ->
-                    ResponseEntity.status(HttpStatus.CONFLICT)
-                            .body(new ProgressDtos.SaveConflict(c.serverVersion(), c.serverProgress()));
+            case ProgressService.SaveOutcome.Accepted accepted ->
+                    ResponseEntity.ok(ProgressDtos.SaveAccepted.of(accepted));
+            case ProgressService.SaveOutcome.Conflict conflict ->
+                    ResponseEntity.status(HttpStatus.CONFLICT).body(ProgressDtos.SaveConflict.of(conflict));
         };
     }
 }
