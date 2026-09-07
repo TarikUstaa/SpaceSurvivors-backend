@@ -45,7 +45,10 @@ Merged and renamed:
 - `player_profile` — identity: `player_id uuid` PK, `device_id` UNIQUE, `display_name`,
   `country`, `last_ip`, `first_login_date`, `updated_at`.
 - `player_progress` — the save: `player_id` PK, `progress_data jsonb`, `version`, `updated_at`.
-- `leaderboard_entries` — unchanged apart from keying on `player_id`.
+- `leaderboard` — unchanged apart from keying on `player_id`. (Renamed from
+  `leaderboard_entries`, and the Java package/classes from `score`/`Score*` to
+  `leaderboard`/`Leaderboard*`, so table, package, classes and endpoint all say the same
+  word. The endpoint moved `/v1/scores` -> `/v1/leaderboard` with them.)
 
 **player_id is deliberately not device_id.** The device id is *how we recognise* a player
 and can change (reinstall, new phone); the player id is *who they are* and never changes.
@@ -97,7 +100,7 @@ answer, not throw.
 
 An append-only `player_run` table (one row per finished run) was proposed and declined for
 now. It is the one thing here that cannot be added retroactively: `player_progress` is
-overwritten on every save and `leaderboard_entries` keeps only the best, so every run played
+overwritten on every save and `leaderboard` keeps only the best, so every run played
 before that table exists is gone.
 
 **Cost of the delay:** a Stats screen, a "last 20 runs" view, run-distribution anti-cheat and
@@ -177,7 +180,7 @@ build beyond localhost.
 
 ### D6 — Leaderboard keeps one row per (user, mode)
 
-> *Now keyed on `player_id` (D9). See also D12 on the run history this rules out.*
+> *Now keyed on `player_id`, and the table is `leaderboard` (D9). See also D12 on the run history this rules out.*
 
 `leaderboard_entries` stores the personal best, not a run history. `POST /v1/scores`
 upserts only when the run beats the stored best.

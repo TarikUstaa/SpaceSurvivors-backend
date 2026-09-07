@@ -1,4 +1,4 @@
-package com.tarikusta.spacesurvivors.score;
+package com.tarikusta.spacesurvivors.leaderboard;
 
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.Min;
@@ -12,19 +12,19 @@ import java.util.List;
  * only describe one endpoint pair. Records are immutable data carriers — Jackson
  * fills them from JSON on the way in and serialises them on the way out.
  */
-public final class ScoreDtos {
+public final class LeaderboardDtos {
 
-    private ScoreDtos() {
+    private LeaderboardDtos() {
     }
 
     /**
-     * Body of {@code POST /v1/scores}.
+     * Body of {@code POST /v1/leaderboard}.
      *
      * <p>The annotations are <em>bean validation</em>: Spring checks them before the
      * controller method runs (because of {@code @Valid}) and rejects the request with
      * 400 if any fails. They cover single-field shape only — "is this number even
      * possible?". Cross-field plausibility ("could a run really get this many kills
-     * in this much time?") is a business rule and lives in {@link ScoreService}.
+     * in this much time?") is a business rule and lives in {@link LeaderboardService}.
      */
     public record Submission(
             @NotBlank
@@ -46,7 +46,7 @@ public final class ScoreDtos {
     }
 
     /**
-     * Response of {@code POST /v1/scores}.
+     * Response of {@code POST /v1/leaderboard}.
      *
      * @param personalBest the player's best survival time in this mode after this submission
      * @param isNewRecord  whether this run beat the stored best (and was therefore written)
@@ -61,7 +61,7 @@ public final class ScoreDtos {
     }
 
     /**
-     * Response of {@code GET /v1/scores}.
+     * Response of {@code GET /v1/leaderboard}.
      *
      * @param me the caller's own standing, or null when they have no entry in this mode
      */

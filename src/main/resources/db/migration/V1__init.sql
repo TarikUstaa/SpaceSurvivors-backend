@@ -50,11 +50,11 @@ CREATE TABLE player_progress (
     updated_at    timestamptz NOT NULL DEFAULT now()
 );
 
--- ── leaderboard_entries ─────────────────────────────────────────────────────
--- One row per (player, mode) = that player's personal best. POST /v1/scores
+-- ── leaderboard ─────────────────────────────────────────────────────────────
+-- One row per (player, mode) = that player's personal best. POST /v1/leaderboard
 -- upserts here only when a run beats the stored best.
 --   mode = 'infinite' | 'campaign'
-CREATE TABLE leaderboard_entries (
+CREATE TABLE leaderboard (
     player_id        uuid        NOT NULL REFERENCES player_profile(player_id) ON DELETE CASCADE,
     mode             text        NOT NULL,
     survived_seconds real        NOT NULL CHECK (survived_seconds >= 0),
@@ -67,7 +67,7 @@ CREATE TABLE leaderboard_entries (
 
 -- Board reads are "top N by survived_seconds within a mode" — index that.
 CREATE INDEX leaderboard_by_mode_seconds
-    ON leaderboard_entries (mode, survived_seconds DESC);
+    ON leaderboard (mode, survived_seconds DESC);
 
 -- ── updated_at ──────────────────────────────────────────────────────────────
 -- Kept honest by the database rather than trusting every code path to set it.

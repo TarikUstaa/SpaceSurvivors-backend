@@ -1,4 +1,4 @@
-package com.tarikusta.spacesurvivors.score;
+package com.tarikusta.spacesurvivors.leaderboard;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -8,25 +8,25 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Every SQL statement that touches {@code leaderboard_entries}.
+ * Every SQL statement that touches {@code leaderboard}.
  *
  * <p>The table holds ONE row per (player, mode) — that player's personal best — not a
  * history of every run. So "submit a score" is an upsert, and "the board" is just
  * the table ordered by time survived.
  */
 @Repository
-public class ScoreRepository {
+public class LeaderboardRepository {
 
     private final JdbcClient db;
 
-    public ScoreRepository(JdbcClient db) {
+    public LeaderboardRepository(JdbcClient db) {
         this.db = db;
     }
 
     /** This player's stored best survival time in a mode, or empty if they have none. */
     public Optional<Double> personalBest(UUID playerId, String mode) {
         return db.sql("""
-                        SELECT survived_seconds FROM leaderboard_entries
+                        SELECT survived_seconds FROM leaderboard
                         WHERE player_id = :id AND mode = :mode
                         """)
                 .param("id", playerId)
@@ -46,7 +46,7 @@ public class ScoreRepository {
     public void saveBest(UUID playerId, String mode, double seconds, int kills,
                          int reachedLevel, int bossesDefeated) {
         db.sql("""
-                        INSERT INTO leaderboard_entries
+                        INSERT INTO leaderboard
                             (player_id, mode, survived_seconds, kills, reached_level, bosses_defeated)
                         VALUES (:id, :mode, :seconds, :kills, :level, :bosses)
                         ON CONFLICT (player_id, mode) DO UPDATE SET
@@ -76,21 +76,21 @@ public class ScoreRepository {
      * <p>The "beats me" test must stay in step with the ORDER BY in {@link #top} —
      * longer survival wins, and an equal time is beaten by whoever got there first.
      */
-    public Optional<ScoreDtos.Me> findMe(UUID playerId, String mode) {
+    public Optional<LeaderboardDtos.Me> findMe(UUID playerId, String mode) {
         return db.sql("""
                         SELECT me.survived_seconds,
                                (SELECT count(*) + 1
-                                  FROM leaderboard_entries o
+                                  FROM leaderboard o
                                  WHERE o.mode = me.mode
                                    AND (o.survived_seconds > me.survived_seconds
                                         OR (o.survived_seconds = me.survived_seconds
                                             AND o.achieved_at < me.achieved_at))) AS rank
-                          FROM leaderboard_entries me
+                          FROM leaderboard me
                          WHERE me.player_id = :id AND me.mode = :mode
                         """)
                 .param("id", playerId)
                 .param("mode", mode)
-                .query((rs, rowNum) -> new ScoreDtos.Me(rs.getInt("rank"), rs.getDouble("survived_seconds")))
+                .query((rs, rowNum) -> new LeaderboardDtos.Me(rs.getInt("rank"), rs.getDouble("survived_seconds")))
                 .optional();
     }
 
@@ -105,7 +105,7 @@ public class ScoreRepository {
     public List<BoardRow> top(String mode, int limit) {
         return db.sql("""
                         SELECT p.display_name, e.survived_seconds, e.kills, e.reached_level
-                          FROM leaderboard_entries e
+                          FROM leaderboard e
                           JOIN player_profile p ON p.player_id = e.player_id
                          WHERE e.mode = :mode
                          ORDER BY e.survived_seconds DESC, e.achieved_at ASC

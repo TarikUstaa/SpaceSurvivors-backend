@@ -1,4 +1,4 @@
-package com.tarikusta.spacesurvivors.score;
+package com.tarikusta.spacesurvivors.leaderboard;
 
 import com.tarikusta.spacesurvivors.auth.Caller;
 import jakarta.validation.Valid;
@@ -15,20 +15,20 @@ import org.springframework.web.bind.annotation.RestController;
  * put on the request by the auth filter and read here with {@code @RequestAttribute}.
  *
  * <p>{@code @Valid} is what makes Spring run the constraints declared on
- * {@link ScoreDtos.Submission} before this method body executes.
+ * {@link LeaderboardDtos.Submission} before this method body executes.
  */
 @RestController
-@RequestMapping("/v1/scores")
-public class ScoreController {
+@RequestMapping("/v1/leaderboard")
+public class LeaderboardController {
 
-    private final ScoreService service;
+    private final LeaderboardService service;
 
-    public ScoreController(ScoreService service) {
+    public LeaderboardController(LeaderboardService service) {
         this.service = service;
     }
 
     /**
-     * POST /v1/scores — report a finished run.
+     * POST /v1/leaderboard — report a finished run.
      * <ul>
      *   <li>200 {personalBest, isNewRecord, rank}</li>
      *   <li>400 malformed body (a field failed validation)</li>
@@ -36,17 +36,17 @@ public class ScoreController {
      * </ul>
      */
     @PostMapping
-    public ScoreDtos.SubmitResult submit(@RequestAttribute(Caller.ATTR) Caller caller,
-                                         @Valid @RequestBody ScoreDtos.Submission run) {
+    public LeaderboardDtos.SubmitResult submit(@RequestAttribute(Caller.ATTR) Caller caller,
+                                         @Valid @RequestBody LeaderboardDtos.Submission run) {
         return service.submit(caller, run);
     }
 
     /**
-     * GET /v1/scores?mode=infinite&amp;limit=100 — the public board plus the caller's
+     * GET /v1/leaderboard?mode=infinite&amp;limit=100 — the public board plus the caller's
      * own standing. {@code limit} is optional and clamped server-side.
      */
     @GetMapping
-    public ScoreDtos.Board board(@RequestAttribute(Caller.ATTR) Caller caller,
+    public LeaderboardDtos.Board board(@RequestAttribute(Caller.ATTR) Caller caller,
                                  @RequestParam String mode,
                                  @RequestParam(defaultValue = "100") int limit) {
         return service.board(caller, mode, limit);

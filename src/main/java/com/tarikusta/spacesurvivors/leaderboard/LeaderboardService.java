@@ -1,4 +1,4 @@
-package com.tarikusta.spacesurvivors.score;
+package com.tarikusta.spacesurvivors.leaderboard;
 
 import com.tarikusta.spacesurvivors.auth.Caller;
 import com.tarikusta.spacesurvivors.player.PlayerService;
@@ -20,7 +20,7 @@ import java.util.UUID;
  * <p>Two kinds of check happen before a score is accepted:
  * <ol>
  *   <li>field shape — handled declaratively by the annotations on
- *       {@link ScoreDtos.Submission}, so a negative kill count never reaches here;</li>
+ *       {@link LeaderboardDtos.Submission}, so a negative kill count never reaches here;</li>
  *   <li>business plausibility — below. A run can be perfectly well-formed and still
  *       be something the game cannot produce, e.g. 50 000 kills in 10 seconds.</li>
  * </ol>
@@ -28,7 +28,7 @@ import java.util.UUID;
  * Real protection needs a server-authoritative run, which is out of scope.
  */
 @Service
-public class ScoreService {
+public class LeaderboardService {
 
     /** The game's two modes. Anything else is a client bug or someone poking the API. */
     private static final Set<String> MODES = Set.of("infinite", "campaign");
@@ -42,11 +42,11 @@ public class ScoreService {
     /** Guard rails for GET: never let a caller ask for the whole table. */
     private static final int MAX_BOARD_SIZE = 200;
 
-    private final ScoreRepository scores;
+    private final LeaderboardRepository board;
     private final PlayerService players;
 
-    public ScoreService(ScoreRepository scores, PlayerService players) {
-        this.scores = scores;
+    public LeaderboardService(LeaderboardRepository board, PlayerService players) {
+        this.board = board;
         this.players = players;
     }
 
@@ -58,40 +58,40 @@ public class ScoreService {
      * write all commit together or not at all.
      */
     @Transactional
-    public ScoreDtos.SubmitResult submit(Caller caller, ScoreDtos.Submission run) {
+    public LeaderboardDtos.SubmitResult submit(Caller caller, LeaderboardDtos.Submission run) {
         String mode = normaliseMode(run.mode());
         rejectImplausible(run);
 
         UUID playerId = players.resolveOrCreate(caller);
 
-        double previousBest = scores.personalBest(playerId, mode).orElse(-1.0);
+        double previousBest = board.personalBest(playerId, mode).orElse(-1.0);
         boolean isNewRecord = run.survivedSeconds() > previousBest;
         if (isNewRecord) {
-            scores.saveBest(playerId, mode, run.survivedSeconds(), run.kills(),
+            board.saveBest(playerId, mode, run.survivedSeconds(), run.kills(),
                     run.reachedLevel(), run.bossesDefeated());
         }
 
         // read back rather than compute: this is what the board will actually show
-        return scores.findMe(playerId, mode)
-                .map(me -> new ScoreDtos.SubmitResult(me.survivedSeconds(), isNewRecord, me.rank()))
-                .orElseGet(() -> new ScoreDtos.SubmitResult(run.survivedSeconds(), isNewRecord, null));
+        return board.findMe(playerId, mode)
+                .map(me -> new LeaderboardDtos.SubmitResult(me.survivedSeconds(), isNewRecord, me.rank()))
+                .orElseGet(() -> new LeaderboardDtos.SubmitResult(run.survivedSeconds(), isNewRecord, null));
     }
 
     /** Top {@code limit} entries of a mode, plus where the caller sits. */
     @Transactional
-    public ScoreDtos.Board board(Caller caller, String mode, int limit) {
+    public LeaderboardDtos.Board board(Caller caller, String mode, int limit) {
         String normalised = normaliseMode(mode);
         int capped = Math.clamp(limit, 1, MAX_BOARD_SIZE);
 
-        List<ScoreDtos.BoardEntry> entries = new ArrayList<>();
+        List<LeaderboardDtos.BoardEntry> entries = new ArrayList<>();
         int rank = 1;
-        for (ScoreRepository.BoardRow row : scores.top(normalised, capped)) {
-            entries.add(new ScoreDtos.BoardEntry(rank++, row.displayName(),
+        for (LeaderboardRepository.BoardRow row : board.top(normalised, capped)) {
+            entries.add(new LeaderboardDtos.BoardEntry(rank++, row.displayName(),
                     row.survivedSeconds(), row.kills(), row.reachedLevel()));
         }
 
-        ScoreDtos.Me me = scores.findMe(players.resolveOrCreate(caller), normalised).orElse(null);
-        return new ScoreDtos.Board(normalised, entries, me);
+        LeaderboardDtos.Me me = board.findMe(players.resolveOrCreate(caller), normalised).orElse(null);
+        return new LeaderboardDtos.Board(normalised, entries, me);
     }
 
     /** Accepts "Infinite" / " infinite " and rejects anything that is not a real mode. */
@@ -105,7 +105,7 @@ public class ScoreService {
         return normalised;
     }
 
-    private void rejectImplausible(ScoreDtos.Submission run) {
+    private void rejectImplausible(LeaderboardDtos.Submission run) {
         if (run.survivedSeconds() >= MIN_SECONDS_TO_JUDGE_RATE
                 && run.kills() / run.survivedSeconds() > MAX_KILLS_PER_SECOND) {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY,
