@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "SpaceSurvivors backend",
-    "description": "Oyunun gercek akisi, sirayla. Uzerine hata senaryolari.\n\nKimlik `Authorization: Device <device-id>` ile gidiyor \u2014 parametre degil kimlik bilgisi oldugu icin header'da: her uc noktada ayni, ve query string erisim loglarina/tarayici gecmisine sizar. Firebase gelince sema `Bearer` olacak, baska hicbir sey degismeyecek.\n\n`deviceA` / `deviceB` degiskenleri iki farkli oyuncuyu temsil ediyor. Gercek oyunda bu degeri Unity ilk acilista bir kez uretip cihaza kaydediyor.\n\nSunucu: IntelliJ'de SpacesurvivorsApplication -> Run.",
+    "description": "Oyunun gercek akisi, sirayla. Uzerine hata senaryolari.\n\nONCE '1 - Giris' klasorundeki POST /v1/auth/token'i calistir: cihaz kimligi + sirri verip bir token aliyorsun, ve test script'i onu {{token}} degiskenine yaziyor. Diger butun istekler `Authorization: Bearer {{token}}` gonderiyor.\n\nNeden boyle: cihaz sirri sadece bu tek uc noktaya gidiyor, sunucu onun yalnizca BCrypt hash'ini sakliyor, ve token bir saat sonra kendiliginden gecersiz oluyor. Eskiden cihaz kimliginin kendisi her istekte gidiyordu ve hicbir zaman sona ermiyordu.\n\nSunucu: IntelliJ'de SpacesurvivorsApplication -> Run.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -11,11 +11,23 @@
     },
     {
       "key": "deviceA",
-      "value": "postman-a"
+      "value": "postman-device-a"
     },
     {
       "key": "deviceB",
-      "value": "postman-b"
+      "value": "postman-device-b"
+    },
+    {
+      "key": "secretA",
+      "value": "postman-secret-a-long-enough-to-pass-32"
+    },
+    {
+      "key": "secretB",
+      "value": "postman-secret-b-long-enough-to-pass-32"
+    },
+    {
+      "key": "token",
+      "value": ""
     }
   ],
   "item": [
@@ -42,7 +54,247 @@
       ]
     },
     {
-      "name": "1 - Ilk acilis",
+      "name": "1 - Giris",
+      "item": [
+        {
+          "name": "POST /v1/auth/token  (ilk giris = kayit)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Store the token so every other request in the collection can use it.",
+                  "if (pm.response.code === 200) {",
+                  "    pm.collectionVariables.set('token', pm.response.json().token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceId\": \"{{deviceA}}\",\n  \"deviceSecret\": \"{{secretA}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Bu cihaz hic gorulmemisse sunucu onu kaydediyor: player_profile satirini aciyor, player_id'yi Postgres uretiyor, ve sirrin BCrypt hash'ini sakliyor. Oyunda kayit ekrani yok, o yuzden ilk temas kayit demek.\n\nDonen token {{token}} degiskenine yaziliyor \u2014 asagidaki her istek onu kullaniyor.\n\nBeklenen: 200 {\"token\":\"eyJ...\",\"expiresIn\":3600}"
+          }
+        },
+        {
+          "name": "POST /v1/auth/token  (ayni cihaz tekrar)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Store the token so every other request in the collection can use it.",
+                  "if (pm.response.code === 200) {",
+                  "    pm.collectionVariables.set('token', pm.response.json().token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceId\": \"{{deviceA}}\",\n  \"deviceSecret\": \"{{secretA}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Ayni kimlik + ayni sir. Yeni satir YARATILMIYOR, ayni player_id icin yeni bir token veriliyor. Oyun bunu her acilista bir kez yapiyor.\n\nBeklenen: 200, ayni oyuncu"
+          }
+        },
+        {
+          "name": "POST /v1/auth/token  (yanlis sir)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Store the token so every other request in the collection can use it.",
+                  "if (pm.response.code === 200) {",
+                  "    pm.collectionVariables.set('token', pm.response.json().token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceId\": \"{{deviceA}}\",\n  \"deviceSecret\": \"bu-sir-yanlis-ama-yeterince-uzun-32\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Kimlik dogru, sir yanlis. Cevap 401 ve hangi yarinin yanlis oldugunu SOYLEMIYOR \u2014 sylemek, birinin istek istek hesap taramasina izin vermek olurdu.\n\nEski tasarimda bu istek basarili olurdu: cihaz kimligini bilen herkes o oyuncuydu.\n\nBeklenen: 401"
+          }
+        },
+        {
+          "name": "POST /v1/auth/token  (cok kisa sir)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Store the token so every other request in the collection can use it.",
+                  "if (pm.response.code === 200) {",
+                  "    pm.collectionVariables.set('token', pm.response.json().token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceId\": \"{{deviceB}}\",\n  \"deviceSecret\": \"kisa\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Sir en az 32 karakter olmali. Kisa bir sir, ne kadar iyi hash'lenirse hash'lensin tahmin edilebilir; sunucunun bunu dayatmaktan baska yolu yok.\n\nBeklenen: 400 + fields.deviceSecret"
+          }
+        },
+        {
+          "name": "POST /v1/auth/token  (ikinci oyuncu)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Store the token so every other request in the collection can use it.",
+                  "if (pm.response.code === 200) {",
+                  "    pm.collectionVariables.set('token', pm.response.json().token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceId\": \"{{deviceB}}\",\n  \"deviceSecret\": \"{{secretB}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Ikinci bir cihaz = ikinci bir oyuncu. Leaderboard senaryolari icin lazim.\n\nDIKKAT: bu istek {{token}}'i deviceB'ninkiyle degistiriyor.\n\nBeklenen: 200"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 - Ilk acilis",
       "item": [
         {
           "name": "GET /v1/player  (ilk temas)",
@@ -51,7 +303,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceA}}"
+                "value": "Bearer {{token}}"
               }
             ],
             "url": {
@@ -74,7 +326,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceA}}"
+                "value": "Bearer {{token}}"
               }
             ],
             "url": {
@@ -97,7 +349,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceA}}"
+                "value": "Bearer {{token}}"
               }
             ],
             "url": {
@@ -116,7 +368,7 @@
       ]
     },
     {
-      "name": "2 - Bulut kayit",
+      "name": "3 - Bulut kayit",
       "item": [
         {
           "name": "PUT /v1/progress  (ilk kayit)",
@@ -125,7 +377,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceA}}"
+                "value": "Bearer {{token}}"
               },
               {
                 "key": "Content-Type",
@@ -161,7 +413,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceA}}"
+                "value": "Bearer {{token}}"
               }
             ],
             "url": {
@@ -184,7 +436,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceA}}"
+                "value": "Bearer {{token}}"
               },
               {
                 "key": "Content-Type",
@@ -220,7 +472,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceA}}"
+                "value": "Bearer {{token}}"
               },
               {
                 "key": "Content-Type",
@@ -252,7 +504,7 @@
       ]
     },
     {
-      "name": "3 - Isim secme",
+      "name": "4 - Isim secme",
       "item": [
         {
           "name": "PATCH /v1/player  (isim sec)",
@@ -261,7 +513,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceA}}"
+                "value": "Bearer {{token}}"
               },
               {
                 "key": "Content-Type",
@@ -297,7 +549,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceB}}"
+                "value": "Bearer {{token}}"
               },
               {
                 "key": "Content-Type",
@@ -333,7 +585,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceB}}"
+                "value": "Bearer {{token}}"
               },
               {
                 "key": "Content-Type",
@@ -365,7 +617,7 @@
       ]
     },
     {
-      "name": "4 - Leaderboard",
+      "name": "5 - Leaderboard",
       "item": [
         {
           "name": "POST /v1/leaderboard  (skor gonder)",
@@ -374,7 +626,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceA}}"
+                "value": "Bearer {{token}}"
               },
               {
                 "key": "Content-Type",
@@ -410,7 +662,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceB}}"
+                "value": "Bearer {{token}}"
               },
               {
                 "key": "Content-Type",
@@ -446,7 +698,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceA}}"
+                "value": "Bearer {{token}}"
               },
               {
                 "key": "Content-Type",
@@ -482,7 +734,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceA}}"
+                "value": "Bearer {{token}}"
               }
             ],
             "url": {
@@ -511,10 +763,10 @@
       ]
     },
     {
-      "name": "5 - Hata senaryolari",
+      "name": "6 - Hata senaryolari",
       "item": [
         {
-          "name": "401 - kimlik yok",
+          "name": "401 - token yok",
           "request": {
             "method": "GET",
             "header": [],
@@ -528,7 +780,7 @@
                 "player"
               ]
             },
-            "description": "Header yoksa istek reddediliyor. Eskiden paylasilan bir 'dev-unknown' hesabina dusuyordu: header'i unutan herkes ayni oyuncu oluyor, ayni profili ezebiliyordu. Daha kotusu, istemci hatasini gizliyordu.\n\nBeklenen: 401 {\"detail\":\"Authorization: Device <device-id> header is required\"}"
+            "description": "Token olmadan hicbir uc noktaya erisim yok. Spring Security istegi controller'a hic ulastirmadan reddediyor.\n\nBeklenen: 401"
           }
         },
         {
@@ -538,7 +790,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceA}}"
+                "value": "Bearer {{token}}"
               },
               {
                 "key": "Content-Type",
@@ -574,7 +826,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceA}}"
+                "value": "Bearer {{token}}"
               },
               {
                 "key": "Content-Type",
@@ -610,7 +862,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceA}}"
+                "value": "Bearer {{token}}"
               },
               {
                 "key": "Content-Type",
@@ -646,7 +898,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceA}}"
+                "value": "Bearer {{token}}"
               },
               {
                 "key": "Content-Type",
@@ -682,7 +934,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceA}}"
+                "value": "Bearer {{token}}"
               },
               {
                 "key": "Content-Type",
@@ -718,7 +970,7 @@
             "header": [
               {
                 "key": "Authorization",
-                "value": "Device {{deviceA}}"
+                "value": "Bearer {{token}}"
               },
               {
                 "key": "Content-Type",

@@ -91,6 +91,40 @@ to see.
 
 *Newest first. Superseded entries are kept — the reasoning is the record.*
 
+### D19 — real authentication: device secret + signed token (2026-09-07)
+
+**D5 is fulfilled.** The device id was a claim nobody checked; anyone who learned one became
+that player. It behaved like a password with none of a password's protections: stored in the
+clear, sent on every request, never expiring, impossible to revoke.
+
+Chosen over Firebase deliberately. Firebase would have bought the same protection with less
+Java, plus a path to real accounts later — but Spring Security was the largest remaining gap
+in what this project teaches, and `player_id` stays stable either way, so adding Firebase
+later is still cheap.
+
+**Shape.** `V2` adds `device_secret_hash`; only the BCrypt hash is stored, so a copy of the
+table proves nothing. Nullable, because rows written before V2 have no secret — those devices
+adopt the one they present rather than being locked out of progress they already earned.
+`POST /v1/auth/token` exchanges deviceId + deviceSecret for a one-hour JWT. Spring Security
+verifies the signature before a request reaches a controller.
+
+**Every failure gives the same answer.** Distinguishing "no such device" from "wrong secret"
+hands over account enumeration one request at a time.
+
+**The unexpected win.** The token carries `player_id` as its subject, so every request already
+knows who is calling. The device-to-player lookup that ran on all of them is gone;
+`ProgressService` and `LeaderboardService` no longer depend on `PlayerService` at all, and
+"last seen" is written once at login instead of on the hot path of every read.
+
+**Known limits, stated plainly:**
+- The secret sits in PlayerPrefs. Someone with the unlocked device has the account — the
+  honest ceiling of device-based identity, and why real accounts (Firebase, email) remain the
+  answer to "I lost my phone".
+- `POST /v1/auth/token` runs BCrypt on every call, which is intentionally slow. That is a
+  denial-of-service lever until rate limiting exists.
+- A never-seen device id can still be claimed by whoever registers it first. Device ids are
+  random GUIDs, so this is theoretical, but it is the model.
+
 ### D15 — a catch-all handler needs the framework's handler underneath it (2026-09-07)
 
 `@ExceptionHandler(Exception.class)` sat in front of every exception Spring MVC raises, so

@@ -138,7 +138,7 @@ açılışta patlar. O pencere kapandı: bundan sonrası `V2__`.
 
 ## "Testler ne kadar kapsıyor?"
 
-88 test: servislerin iş kuralları (birim), filtrenin header işleme, controller status
+87 test: servislerin iş kuralları (birim), filtrenin header işleme, controller status
 eşlemeleri (`@WebMvcTest`).
 
 **Repository testleri artık var** — gerçek Postgres'e karşı 17 test: jsonb'nin çift
@@ -162,14 +162,48 @@ yeri orası.
 **Bedeli kabul edilmiş bir taviz:** HTTP'de `GET` "güvenli" olmalıdır. Yazma yükünü
 5 dakikada bire indirdim (önce her istekte yazıyordu), ama semantik ihlal duruyor.
 
-## "Auth yok, farkında mısın?"
+## "Auth nasıl çalışıyor?"
 
-Evet, bilinçli bir erteleme. Şu an `X-Device-Id`'de ne yazarsan o oluyorsun — cihaz
+Cihaz iki değer tutuyor: **kimlik** (`device_id` — hangi cihaz olduğunu söyler, tek başına
+hiçbir şey kanıtlamaz) ve **sır** (`device_secret` — kanıt).
+
+1. Sır sadece `POST /v1/auth/token`'a gidiyor, sunucu **yalnızca BCrypt hash'ini** saklıyor
+2. Karşılığında **1 saatlik JWT** alınıyor
+3. Diğer her istek `Authorization: Bearer <token>` taşıyor, sunucu **imzayı doğruluyor**
+
+**Neden BCrypt, neden SHA-256 değil:** BCrypt kasıtlı olarak yavaş ve satır başına ayrı
+tuzlanıyor. Tablo çalınsa bile çevrimdışı saldırı pratik olmuyor. Hızlı bir hash bu özelliğe
+sahip değil.
+
+**Neden token, neden sırrı her istekte göndermiyoruz:** sır bir kez gidiyor, token bir saatte
+kendiliğinden ölüyor. Sızan bir token sınırlı zarar veriyor; sızan bir sır kalıcı olurdu.
+
+**Hata mesajı neden ayrım yapmıyor:** "böyle cihaz yok" ile "sır yanlış"ı ayırmak, birinin
+istek istek hesap taraması demek olurdu.
+
+**Beklenmedik kazanç:** token `player_id`'yi taşıdığı için **her istekteki cihaz→oyuncu
+sorgusu tamamen kalktı.** `ProgressService` ve `LeaderboardService` artık `PlayerService`'e
+hiç bağımlı değil.
+
+### Kabul ettiğim sınırlar
+
+- **Sır cihazda duruyor.** Kilidi açık cihaza erişen hesaba da erişir — cihaz tabanlı
+  kimliğin dürüst tavanı bu, ve "telefonumu kaybettim" sorununun cevabının gerçek hesap
+  (Firebase, e-posta) olmasının sebebi.
+- **`/v1/auth/token` her çağrıda BCrypt çalıştırıyor**, ki kasıtlı olarak yavaş. Rate
+  limiting gelene kadar bu bir DoS kolu.
+- **Firebase'i neden seçmedim:** aynı korumayı daha az Java ile verirdi, ama Spring Security
+  bu projedeki en büyük boşluktu. `player_id` sabit kaldığı için Firebase'i sonradan eklemek
+  hâlâ ucuz.
+
+## "Eskiden auth yoktu, farkında mıydın?"
+
+Evet, bilinçli bir ertelemeydi. Şu an `X-Device-Id`'de ne yazarsan o oluyorsun — cihaz
 kimliğini ele geçiren biri profili okur, ilerlemeyi siler, adına skor gönderir.
 
 Cihaz kimliği pratikte **süresi dolmayan, iptal edilemeyen, değiştirilemeyen bir şifre**
-gibi davranıyor. Firebase token doğrulaması gelince değişecek tek dosya
-`DeviceAuthFilter` — seam'i baştan bunun için koyduk.
+gibi davranıyor. Seam'i baştan bunun için koymuştuk — geçiş tek bir sınıfı değiştirdi, servisler ve
+controller'lar elleşmedi.
 
 **Auth'un çözmediği:** sahte hesap üretimi (rate limiting gerekir) ve hile (sunucu-otoriter
 run gerekir). Bunları karıştırmamak lazım.
