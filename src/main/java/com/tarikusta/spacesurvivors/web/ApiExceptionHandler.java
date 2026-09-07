@@ -8,6 +8,7 @@ import com.tarikusta.spacesurvivors.domain.TooLargeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -71,6 +72,18 @@ public class ApiExceptionHandler {
         ProblemDetail detail = problem(HttpStatus.BAD_REQUEST, "invalid request body");
         detail.setProperty("fields", fields);
         return detail;
+    }
+
+    /**
+     * Raised by Hibernate's {@code @Version} check when a row changed between our read
+     * and our write. The service already answers the ordinary stale-version case with a
+     * 409 carrying the server's copy; this covers only the narrow race that slips past
+     * it, and cannot carry a body — the transaction is rollback-only by the time we get
+     * here. The client's response is the same either way: re-read and merge.
+     */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ProblemDetail concurrentWrite(ObjectOptimisticLockingFailureException e) {
+        return problem(HttpStatus.CONFLICT, "the record changed while this write was in flight");
     }
 
     /**

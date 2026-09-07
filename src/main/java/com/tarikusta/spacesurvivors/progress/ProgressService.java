@@ -25,11 +25,11 @@ public class ProgressService {
     /** A real save is a few hundred bytes; anything this large is a bug or abuse. */
     private static final int MAX_PROGRESS_BYTES = 64 * 1024;
 
-    private final ProgressRepository progress;
+    private final PlayerProgressRepository progress;
     private final PlayerService players;
     private final ObjectMapper json;
 
-    public ProgressService(ProgressRepository progress, PlayerService players, ObjectMapper json) {
+    public ProgressService(PlayerProgressRepository progress, PlayerService players, ObjectMapper json) {
         this.progress = progress;
         this.players = players;
         this.json = json;
@@ -42,8 +42,8 @@ public class ProgressService {
     @Transactional
     public ProgressDtos.ProgressView load(Caller caller) {
         UUID playerId = players.resolveOrCreate(caller);
-        return progress.find(playerId)
-                .map(stored -> new ProgressDtos.ProgressView(json.readTree(stored.json()), stored.version()))
+        return progress.findById(playerId)
+                .map(row -> new ProgressDtos.ProgressView(json.readTree(row.getProgressData()), row.getVersion()))
                 .orElseThrow(() -> new NotFoundException("no progress stored yet"));
     }
 
@@ -68,24 +68,27 @@ public class ProgressService {
             throw new TooLargeException("progress exceeds 64 KB");
         }
 
-        // Try the write first. The common case — an established player saving again —
-        // then costs one statement, and only the two rarer outcomes need a look at
-        // what is actually stored.
-        Optional<Integer> newVersion = progress.update(playerId, progressJson, request.version());
-        if (newVersion.isPresent()) {
-            return new SaveOutcome.Accepted(newVersion.get());
-        }
-
-        // Nothing was updated, which means either there is no row yet or the version
-        // had moved on. Only now is it worth asking which.
-        Optional<ProgressRepository.StoredProgress> existing = progress.find(playerId);
+        Optional<PlayerProgress> existing = progress.findById(playerId);
         if (existing.isEmpty()) {
-            progress.insert(playerId, progressJson);
-            return new SaveOutcome.Accepted(1);
+            PlayerProgress created = progress.save(new PlayerProgress(playerId, progressJson));
+            return new SaveOutcome.Accepted(created.getVersion());
         }
 
-        ProgressRepository.StoredProgress current = existing.get();
-        return new SaveOutcome.Conflict(current.version(), json.readTree(current.json()));
+        // Compare before writing rather than letting @Version raise. A raised
+        // OptimisticLockException marks the transaction rollback-only, so the query that
+        // fetches the server's copy for the 409 body could not run afterwards — the same
+        // trap that PlayerService.create fell into with DuplicateKeyException.
+        PlayerProgress row = existing.get();
+        if (row.getVersion() != request.version()) {
+            return new SaveOutcome.Conflict(row.getVersion(), json.readTree(row.getProgressData()));
+        }
+
+        // The entity is managed, so this alone would be written at commit. Flushing now
+        // makes @Version's guard fire here, where it still guards something: a writer
+        // that committed between our read and this write.
+        row.setProgressData(progressJson);
+        PlayerProgress saved = progress.saveAndFlush(row);
+        return new SaveOutcome.Accepted(saved.getVersion());
     }
 
     /**

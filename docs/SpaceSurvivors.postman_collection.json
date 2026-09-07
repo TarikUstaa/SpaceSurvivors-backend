@@ -142,7 +142,7 @@
                 "progress"
               ]
             },
-            "description": "version:0 = 'elimde sunucudan gelmis bir surum yok, bu ilk yuklemem'.\n\nBeklenen: 200 {\"version\":1}",
+            "description": "version:0 = 'elimde sunucudan gelmis bir surum yok, bu ilk yuklemem'.\n\nBeklenen: 200 {\"version\":0}\n\nSifirdan basliyor cunku Hibernate'in @Version'i oyle. Sayi istemci icin anlamsiz \u2014 sadece geri yollamasi gereken bir jeton.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"progress\": {\n    \"schemaVersion\": 5,\n    \"wallet\": 100,\n    \"ownedShipIds\": [\n      \"scout\"\n    ]\n  },\n  \"version\": 0\n}",
@@ -174,7 +174,7 @@
                 "progress"
               ]
             },
-            "description": "Dikkat: cevapta userId var ama sen gondermedin. Sunucu kendi player_id'sini basiyor. Body'ye \"userId\":\"hacker\" yazip yollasan bile uzerine yazar.\n\nBeklenen: 200, progress.userId = sunucunun uuid'si, version 1"
+            "description": "Dikkat: cevapta userId var ama sen gondermedin. Sunucu kendi player_id'sini basiyor. Body'ye \"userId\":\"hacker\" yazip yollasan bile uzerine yazar.\n\nBeklenen: 200, progress.userId = sunucunun uuid'si, version 0"
           }
         },
         {
@@ -201,10 +201,10 @@
                 "progress"
               ]
             },
-            "description": "version:0 yolluyoruz ama sunucu 1'de. Optimistic locking devrede: UPDATE ... WHERE version = 0 hicbir satira uymuyor, 0 satir etkileniyor.\n\nSunucu koru korune ezmek yerine kendi kopyasini geri veriyor. wallet:999 YAZILMADI. Bu olmasaydi: telefonda kazandigin scrap, tablette eski profil kaydedilince ucardi.\n\nBeklenen: 409 {\"serverVersion\":1,\"progress\":{...}}",
+            "description": "version:5 gibi yanlis bir surum yolluyoruz, sunucu 0'da. Optimistic locking devrede: UPDATE ... WHERE version = 5 hicbir satira uymuyor, 0 satir etkileniyor.\n\nSunucu koru korune ezmek yerine kendi kopyasini geri veriyor. wallet:999 YAZILMADI. Bu olmasaydi: telefonda kazandigin scrap, tablette eski profil kaydedilince ucardi.\n\nBeklenen: 409 {\"serverVersion\":0,\"progress\":{...}}",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"progress\": {\n    \"wallet\": 999\n  },\n  \"version\": 0\n}",
+              "raw": "{\n  \"progress\": {\n    \"wallet\": 999\n  },\n  \"version\": 5\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -237,10 +237,10 @@
                 "progress"
               ]
             },
-            "description": "Artik elindeki surum dogru. Yazildi, surum 2 oldu.\n\nBeklenen: 200 {\"version\":2}",
+            "description": "Artik elindeki surum dogru. Yazildi, surum 1 oldu.\n\nBeklenen: 200 {\"version\":1}",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"progress\": {\n    \"schemaVersion\": 5,\n    \"wallet\": 250\n  },\n  \"version\": 1\n}",
+              "raw": "{\n  \"progress\": {\n    \"schemaVersion\": 5,\n    \"wallet\": 250\n  },\n  \"version\": 0\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -738,7 +738,7 @@
             "description": "64 KB siniri. Gercek bir profil birkac yuz bayt.\n\nBeklenen: 413",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"progress\": { \"junk\": \"{{bigBlob}}\" },\n  \"version\": 2\n}",
+              "raw": "{\n  \"progress\": { \"junk\": \"{{bigBlob}}\" },\n  \"version\": 1\n}",
               "options": {
                 "raw": {
                   "language": "json"
