@@ -37,6 +37,37 @@ That repo was deleted. Current repo starts at `29c80e5`.
 
 *Newest first. Superseded entries are kept — the reasoning is the record.*
 
+### D13 — first contact must not rely on a caught constraint violation (2026-09-07)
+
+A review found that eight concurrent requests for one *new* device returned a 200 and
+seven 500s. `PlayerService.create()` caught `DuplicateKeyException` and re-read the
+device to see who won the race — but `resolveOrCreate` is `@Transactional`, and in
+Postgres **a raised constraint violation aborts the whole transaction**: every later
+statement fails with `25P02`, including the recovery query and the retry. The race
+handling and the name-retry loop were both dead code, invisible in single-user testing
+because collisions are rare.
+
+`insertIfFree` now uses `ON CONFLICT DO NOTHING`, which covers both unique constraints
+and returns zero rows rather than raising. Nothing aborts, so the caller can genuinely
+distinguish "another request registered this device" (adopt it) from "that name is
+taken" (retry).
+
+**The general rule:** inside a transaction, a constraint violation is not a recoverable
+error unless you never let it be raised. `applyName` still catches one — safe only
+because nothing runs after it.
+
+### D14 — client headers are input, not facts
+
+`X-Forwarded-For` was read unconditionally and passed to `CAST(:ip AS inet)`. Two
+consequences, both reproduced: a non-IP value turned every endpoint into a 500 (one
+header, no authentication needed), and a valid-looking one was stored verbatim, so
+`last_ip` was whatever the caller felt like claiming.
+
+The filter now parses the value and yields null unless it is a literal address, and only
+looks at the header when `app.trust-forwarded-for` is enabled — that header carries
+meaning only when a proxy we control added it. Off by default; turn it on when something
+trustworthy sits in front.
+
 ### D9 — player_profile + player_progress, replacing users + players (2026-09-07)
 
 Tarik's call: `users` and `players` were 1:1 on the same key, which bought nothing.
