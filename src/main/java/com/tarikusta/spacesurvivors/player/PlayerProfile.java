@@ -37,12 +37,19 @@ public class PlayerProfile {
     private String country;
 
     /**
-     * Postgres' {@code inet} type has no JPA equivalent, so it is declared explicitly and
-     * carried as text. Hibernate would otherwise bind a varchar and Postgres would refuse
-     * the comparison; {@code columnDefinition} also keeps {@code ddl-auto=validate} happy.
-     * The value is already validated to be a literal address before it reaches here.
+     * Read-only to JPA, and it has to be.
+     *
+     * <p>Postgres' {@code inet} has no JPA type. Hibernate binds a {@code String} as
+     * {@code varchar}, and Postgres refuses to assign varchar to an inet column — so any
+     * update Hibernate wrote for this entity failed outright, whatever the update was
+     * actually changing. {@code columnDefinition} does not help: it only shapes generated
+     * DDL, and Flyway owns the schema here.</p>
+     *
+     * <p>Nothing is lost by making it read-only, because JPA never had a reason to write
+     * it: the address is set by {@link PlayerProfileRepository#insertIfFree} and refreshed
+     * by {@link PlayerProfileRepository#touch}, both of which cast it explicitly in SQL.</p>
      */
-    @Column(name = "last_ip", columnDefinition = "inet")
+    @Column(name = "last_ip", columnDefinition = "inet", insertable = false, updatable = false)
     private String lastIp;
 
     /**
@@ -134,10 +141,6 @@ public class PlayerProfile {
 
     public String getLastIp() {
         return lastIp;
-    }
-
-    public void setLastIp(String lastIp) {
-        this.lastIp = lastIp;
     }
 
     public Instant getUpdatedAt() {

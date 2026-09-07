@@ -91,6 +91,32 @@ to see.
 
 *Newest first. Superseded entries are kept — the reasoning is the record.*
 
+### D20 — an inet column must be read-only to JPA (2026-09-07)
+
+Every `PATCH /v1/player` answered **503**. `last_ip` is Postgres' `inet`; Hibernate binds a
+`String` field as `varchar`, and Postgres refuses to assign varchar to inet:
+
+```
+ERROR: column "last_ip" is of type inet but expression is of type character varying
+```
+
+So *any* update Hibernate wrote for `PlayerProfile` failed, whatever it was actually
+changing — renaming was simply the first path to try one. `columnDefinition = "inet"` does
+not help; it only shapes generated DDL, and Flyway owns the schema.
+
+Fixed by marking the field `insertable = false, updatable = false`. Nothing is lost: JPA
+never had a reason to write it. The address is set by `insertIfFree` and refreshed by
+`touch`, both of which cast it explicitly in SQL.
+
+**How it was missed, and the lesson.** Every test of the rename path mocked the repository,
+so the UPDATE Hibernate actually emits had never once reached Postgres. Mocks confirm that
+the code calls what we expect; only a real database says whether the call works. This is the
+second time an integration test found something no unit test could — the first was the
+`updated_at` trigger refusing to be backdated.
+
+It was found by the Postman collection's own assertions, which is the argument for making a
+collection self-verifying rather than a list of requests to eyeball.
+
 ### D19 — real authentication: device secret + signed token (2026-09-07)
 
 **D5 is fulfilled.** The device id was a claim nobody checked; anyone who learned one became
