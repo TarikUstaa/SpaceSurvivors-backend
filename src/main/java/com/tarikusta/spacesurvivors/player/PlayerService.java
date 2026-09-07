@@ -4,7 +4,7 @@ import com.tarikusta.spacesurvivors.auth.Caller;
 import com.tarikusta.spacesurvivors.domain.AlreadyTakenException;
 import com.tarikusta.spacesurvivors.domain.InvalidInputException;
 import com.tarikusta.spacesurvivors.domain.NotFoundException;
-import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,9 +33,9 @@ public class PlayerService {
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    private final PlayerRepository players;
+    private final PlayerProfileRepository players;
 
-    public PlayerService(PlayerRepository players) {
+    public PlayerService(PlayerProfileRepository players) {
         this.players = players;
     }
 
@@ -46,10 +46,11 @@ public class PlayerService {
      */
     @Transactional
     public UUID resolveOrCreate(Caller caller) {
-        Optional<UUID> existing = players.findIdByDevice(caller.deviceId());
+        Optional<PlayerProfile> existing = players.findByDeviceId(caller.deviceId());
         if (existing.isPresent()) {
-            players.touch(existing.get(), caller.ip());
-            return existing.get();
+            UUID playerId = existing.get().getPlayerId();
+            players.touch(playerId, caller.ip());
+            return playerId;
         }
         return create(caller);
     }
@@ -82,17 +83,22 @@ public class PlayerService {
     private void applyName(UUID playerId, String requestedName) {
         String name = requestedName == null ? "" : requestedName.trim();
         requireValidName(name);
+
+        PlayerProfile profile = players.findById(playerId)
+                .orElseThrow(() -> new NotFoundException("player not found"));
+        profile.setDisplayName(name);
         try {
-            if (!players.rename(playerId, name)) {
-                throw new NotFoundException("player not found");
-            }
-        } catch (DuplicateKeyException e) {
+            // saveAndFlush, not save: dirty checking would otherwise write at commit, and
+            // the unique violation would surface outside this try block.
+            players.saveAndFlush(profile);
+        } catch (DataIntegrityViolationException e) {
             throw new AlreadyTakenException("name already taken");
         }
     }
 
     private Player require(UUID playerId) {
-        return players.find(playerId)
+        return players.findById(playerId)
+                .map(PlayerProfile::toPlayer)
                 .orElseThrow(() -> new NotFoundException("player not found"));
     }
 
@@ -111,15 +117,15 @@ public class PlayerService {
      */
     private UUID create(Caller caller) {
         for (int attempt = 0; attempt < MAX_NAME_ATTEMPTS; attempt++) {
-            Optional<UUID> created = players.insertIfFree(caller.deviceId(), generateName(), caller.ip());
-            if (created.isPresent()) {
-                return created.get();
+            players.insertIfFree(caller.deviceId(), generateName(), caller.ip());
+
+            // A row for this device now means either our insert landed or a concurrent
+            // request for the same device won — both are the right answer. No row means
+            // the generated name was taken, so try a different one.
+            Optional<PlayerProfile> profile = players.findByDeviceId(caller.deviceId());
+            if (profile.isPresent()) {
+                return profile.get().getPlayerId();
             }
-            Optional<UUID> raced = players.findIdByDevice(caller.deviceId());
-            if (raced.isPresent()) {
-                return raced.get();
-            }
-            // the name was taken, not the device — try another
         }
         throw new IllegalStateException("could not allocate a player name after "
                 + MAX_NAME_ATTEMPTS + " attempts");
