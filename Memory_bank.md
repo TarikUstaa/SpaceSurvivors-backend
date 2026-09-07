@@ -91,6 +91,49 @@ to see.
 
 *Newest first. Superseded entries are kept — the reasoning is the record.*
 
+### D15 — a catch-all handler needs the framework's handler underneath it (2026-09-07)
+
+`@ExceptionHandler(Exception.class)` sat in front of every exception Spring MVC raises, so
+an unknown path answered **500** instead of 404, a wrong verb 500 instead of 405, an
+unreadable body 500 instead of 400 — each logged at ERROR, turning any bot probing for
+`/wp-admin` into error-log noise. Reproduced, then fixed by extending
+`ResponseEntityExceptionHandler`.
+
+**The general rule:** a catch-all is correct only when something above it already handles
+the framework's own exceptions properly.
+
+### D16 — reads must not write
+
+`resolveOrCreate` ran on every request, so fetching progress or browsing the leaderboard
+created a player row. Three problems at once: `GET` is defined as safe, a write sat on the
+hot path of the busiest endpoints, and anyone could grow `player_profile` by inventing
+device ids.
+
+Split into `resolve` (readOnly, `Optional`) and `resolveOrCreate`. Only endpoints that
+were going to write use the latter — plus `GET /v1/player`, whose entire job is deciding
+who you are, which is the one honest place to stamp `first_login_date`.
+
+### D17 — a repository exposes what the domain allows, not what the framework can generate
+
+`LeaderboardEntryRepository` extended `JpaRepository` and therefore handed out
+`save(entity)` — which would overwrite a player's best with a worse run and bypass
+upsert-if-better entirely, with nothing in the type system objecting. It now extends the
+bare `Repository` marker, so only the four declared methods exist.
+
+`PlayerProfileRepository` and `PlayerProgressRepository` keep `JpaRepository`, because they
+genuinely use `findById` / `save` / `saveAndFlush`.
+
+### D18 — the API description is public on purpose
+
+springdoc generates it from the controllers, so it cannot drift the way a hand-written spec
+does. Writing the test for it immediately found that `/v3/api-docs` answered **401**: the
+filter guarded every path, so reading the document that explains which credential to send
+required already knowing it. Docs and probes are now exempt.
+
+Nothing secret is published — the document lists endpoints any client already knows. A
+deployment that would rather not publish it should switch springdoc off
+(`springdoc.api-docs.enabled=false`), not hide it behind the credential it exists to explain.
+
 ### D13 — first contact must not rely on a caught constraint violation (2026-09-07)
 
 A review found that eight concurrent requests for one *new* device returned a 200 and
