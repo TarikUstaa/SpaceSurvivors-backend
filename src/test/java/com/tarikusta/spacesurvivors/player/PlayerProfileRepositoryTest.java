@@ -27,6 +27,9 @@ class PlayerProfileRepositoryTest {
     @Autowired
     private JdbcClient db;
 
+    /** Any BCrypt-shaped string; these tests are about the constraints, not the hashing. */
+    private static final String HASH = "$2a$10$abcdefghijklmnopqrstuvwxyz012345678901234567890";
+
     private static String device() {
         return "test-" + UUID.randomUUID();
     }
@@ -40,7 +43,7 @@ class PlayerProfileRepositoryTest {
     void insertsWhenNothingIsTaken() {
         String deviceId = device();
 
-        assertThat(players.insertIfFree(deviceId, name(), "127.0.0.1")).isEqualTo(1);
+        assertThat(players.insertIfFree(deviceId, name(), "127.0.0.1", HASH)).isEqualTo(1);
 
         // Proves @Modifying(clearAutomatically) did its job: without it this read could be
         // answered from a persistence context that never saw the native insert.
@@ -54,28 +57,28 @@ class PlayerProfileRepositoryTest {
     @DisplayName("a second insert for the same device reports 0 instead of raising")
     void reportsRatherThanRaisingOnADuplicateDevice() {
         String deviceId = device();
-        players.insertIfFree(deviceId, name(), null);
+        players.insertIfFree(deviceId, name(), null, HASH);
 
         // The whole point: no exception, so the caller's transaction survives and it can
         // decide what to do. A raised violation would abort the transaction outright.
-        assertThat(players.insertIfFree(deviceId, name(), null)).isZero();
+        assertThat(players.insertIfFree(deviceId, name(), null, HASH)).isZero();
     }
 
     @Test
     @DisplayName("a taken name reports 0, whatever its casing")
     void reportsADuplicateNameCaseInsensitively() {
-        players.insertIfFree(device(), "Tarik", null);
+        players.insertIfFree(device(), "Tarik", null, HASH);
 
-        assertThat(players.insertIfFree(device(), "Tarik", null)).isZero();
-        assertThat(players.insertIfFree(device(), "TARIK", null)).isZero();
-        assertThat(players.insertIfFree(device(), "tArIk", null)).isZero();
+        assertThat(players.insertIfFree(device(), "Tarik", null, HASH)).isZero();
+        assertThat(players.insertIfFree(device(), "TARIK", null, HASH)).isZero();
+        assertThat(players.insertIfFree(device(), "tArIk", null, HASH)).isZero();
     }
 
     @Test
     @DisplayName("touch does nothing while the row is fresh")
     void touchIsThrottled() {
         String deviceId = device();
-        players.insertIfFree(deviceId, name(), "127.0.0.1");
+        players.insertIfFree(deviceId, name(), "127.0.0.1", HASH);
         UUID playerId = players.findByDeviceId(deviceId).orElseThrow().getPlayerId();
 
         players.touch(playerId, "8.8.8.8");
@@ -88,7 +91,7 @@ class PlayerProfileRepositoryTest {
     @DisplayName("touch writes once the row is stale enough")
     void touchWritesAfterTheInterval() {
         String deviceId = device();
-        players.insertIfFree(deviceId, name(), "127.0.0.1");
+        players.insertIfFree(deviceId, name(), "127.0.0.1", HASH);
         UUID playerId = players.findByDeviceId(deviceId).orElseThrow().getPlayerId();
 
         ageRowPastTheThreshold(playerId);
@@ -102,7 +105,7 @@ class PlayerProfileRepositoryTest {
     @DisplayName("a request with no usable address keeps the last one known")
     void touchDoesNotErasePreviousAddress() {
         String deviceId = device();
-        players.insertIfFree(deviceId, name(), "127.0.0.1");
+        players.insertIfFree(deviceId, name(), "127.0.0.1", HASH);
         UUID playerId = players.findByDeviceId(deviceId).orElseThrow().getPlayerId();
         ageRowPastTheThreshold(playerId);
 

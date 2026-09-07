@@ -1,14 +1,15 @@
 package com.tarikusta.spacesurvivors.leaderboard;
 
-import com.tarikusta.spacesurvivors.auth.Caller;
+import com.tarikusta.spacesurvivors.auth.CurrentPlayer;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.UUID;
 
 /**
  * HTTP layer for the leaderboard. As with the progress endpoints, the {@link Caller} is
@@ -36,19 +37,19 @@ public class LeaderboardController {
      * </ul>
      */
     @PostMapping
-    public LeaderboardDtos.SubmitResult submit(@RequestAttribute(Caller.ATTR) Caller caller,
+    public LeaderboardDtos.SubmitResult submit(@CurrentPlayer UUID playerId,
                                          @Valid @RequestBody LeaderboardDtos.Submission run) {
-        return service.submit(caller, run);
+        return service.submit(playerId, run);
     }
 
     /**
-     * GET /v1/leaderboard?mode=infinite&amp;limit=100 — the public board plus the caller's
+     * GET /v1/leaderboard?mode=infinite&amp;limit=100 — the public board plus the playerId's
      * own standing. {@code limit} is optional and clamped server-side.
      */
     @GetMapping
-    public LeaderboardDtos.Board board(@RequestAttribute(Caller.ATTR) Caller caller,
+    public LeaderboardDtos.Board board(@CurrentPlayer UUID playerId,
                                  @RequestParam String mode,
                                  @RequestParam(defaultValue = "100") int limit) {
-        return service.board(caller, mode, limit);
+        return service.board(playerId, mode, limit);
     }
 }

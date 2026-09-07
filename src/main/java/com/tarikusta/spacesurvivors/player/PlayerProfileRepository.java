@@ -37,13 +37,14 @@ public interface PlayerProfileRepository extends JpaRepository<PlayerProfile, UU
      */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query(value = """
-            INSERT INTO player_profile (device_id, display_name, last_ip)
-            VALUES (:deviceId, :displayName, CAST(:ip AS inet))
+            INSERT INTO player_profile (device_id, display_name, last_ip, device_secret_hash)
+            VALUES (:deviceId, :displayName, CAST(:ip AS inet), :secretHash)
             ON CONFLICT DO NOTHING
             """, nativeQuery = true)
     int insertIfFree(@Param("deviceId") String deviceId,
                      @Param("displayName") String displayName,
-                     @Param("ip") String ip);
+                     @Param("ip") String ip,
+                     @Param("secretHash") String secretHash);
 
     /**
      * Record that we just saw this player, at most once every five minutes.

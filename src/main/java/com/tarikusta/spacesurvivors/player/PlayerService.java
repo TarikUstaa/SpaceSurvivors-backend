@@ -1,12 +1,13 @@
 package com.tarikusta.spacesurvivors.player;
 
-import com.tarikusta.spacesurvivors.auth.Caller;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.tarikusta.spacesurvivors.domain.AlreadyTakenException;
+import com.tarikusta.spacesurvivors.domain.AuthenticationFailedException;
 import com.tarikusta.spacesurvivors.domain.InvalidInputException;
 import com.tarikusta.spacesurvivors.domain.NotFoundException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,52 +39,60 @@ public class PlayerService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final PlayerProfileRepository players;
+    private final PasswordEncoder passwordEncoder;
 
-    public PlayerService(PlayerProfileRepository players) {
+    public PlayerService(PlayerProfileRepository players, PasswordEncoder passwordEncoder) {
         this.players = players;
+        this.passwordEncoder = passwordEncoder;
     }
 
     /**
-     * The player behind this caller, if there already is one.
+     * Establish who a device is, registering it the first time it appears.
      *
-     * <p>Read-only, and used by every endpoint that only reads. That distinction matters:
-     * {@code GET} is defined as safe, and a read path that quietly created rows would
-     * break that promise, put a write on the hot path of the busiest requests, and let
-     * anyone fill the table by sending fresh device ids at it.</p>
-     */
-    @Transactional(readOnly = true)
-    public Optional<UUID> resolve(Caller caller) {
-        return players.findByDeviceId(caller.deviceId()).map(PlayerProfile::getPlayerId);
-    }
-
-    /**
-     * The player behind this caller, creating the profile if this device is new.
+     * <p>The only place a device id is turned into a player. Every other request arrives
+     * with a signed token that already carries the player id, so nothing else has to look
+     * a device up — that lookup used to run on every single call.</p>
      *
-     * <p>Only for endpoints that were going to write anyway — plus {@code GET /v1/player},
-     * which is the endpoint whose entire job is "who am I", and so is the one honest place
-     * to stamp {@code first_login_date}.</p>
+     * <p>An unknown device is registered rather than refused: the game has no sign-up
+     * screen, and first contact is what makes someone a player. A device that predates the
+     * secret adopts the one it presents, because refusing it would lock an existing player
+     * out of progress they already earned.</p>
+     *
+     * <p>Every failure gives the same answer. Saying whether a device is registered, or
+     * whether it was the secret that was wrong, would let someone enumerate accounts one
+     * request at a time.</p>
      */
     @Transactional
-    public UUID resolveOrCreate(Caller caller) {
-        Optional<PlayerProfile> existing = players.findByDeviceId(caller.deviceId());
-        if (existing.isPresent()) {
-            UUID playerId = existing.get().getPlayerId();
-            players.touch(playerId, caller.ip());
-            return playerId;
+    public UUID authenticateDevice(String deviceId, String rawSecret, String ip) {
+        Optional<PlayerProfile> existing = players.findByDeviceId(deviceId);
+        if (existing.isEmpty()) {
+            return register(deviceId, rawSecret, ip);
         }
-        return create(caller);
+
+        PlayerProfile profile = existing.get();
+        String storedHash = profile.getDeviceSecretHash();
+        if (storedHash == null) {
+            profile.setDeviceSecretHash(passwordEncoder.encode(rawSecret));
+            players.saveAndFlush(profile);
+        } else if (!passwordEncoder.matches(rawSecret, storedHash)) {
+            throw new AuthenticationFailedException("device id or secret is not recognised");
+        }
+
+        // Authenticating is the natural "last seen": it happens once a session rather than
+        // on every read, so nothing has to write on the hot path any more.
+        players.touch(profile.getPlayerId(), ip);
+        return profile.getPlayerId();
     }
 
-    /** GET /v1/player — resolve the caller, creating the profile on first contact. */
-    @Transactional
-    public Player view(Caller caller) {
-        return require(resolveOrCreate(caller));
+    /** GET /v1/player — the authenticated player. */
+    @Transactional(readOnly = true)
+    public Player view(UUID playerId) {
+        return require(playerId);
     }
 
-    /** PATCH /v1/player — set the caller's display name and hand back the updated player. */
+    /** PATCH /v1/player — set the display name and hand back the updated player. */
     @Transactional
-    public Player rename(Caller caller, String requestedName) {
-        UUID playerId = resolveOrCreate(caller);
+    public Player rename(UUID playerId, String requestedName) {
         applyName(playerId, requestedName);
         return require(playerId);
     }
@@ -125,26 +134,28 @@ public class PlayerService {
     }
 
     /**
-     * First sighting of a device: mint a profile with a generated name.
+     * First sighting of a device: mint a profile with a generated name and the secret it
+     * presented.
      *
      * <p>An insert that changes nothing means one of two things, and they need opposite
      * responses. If a row for this device now exists, a concurrent request for the same
-     * device got there first and its player is the right answer — retrying would be
-     * wrong. Otherwise the generated name was taken, and a different one will work.</p>
+     * device got there first and its player is the right answer — retrying would be wrong.
+     * Otherwise the generated name was taken, and a different one will work.</p>
      *
-     * <p>This deliberately does not go through a caught {@code DuplicateKeyException}:
-     * a raised constraint violation aborts the transaction this method runs in, so the
+     * <p>This deliberately does not go through a caught {@code DuplicateKeyException}: a
+     * raised constraint violation aborts the transaction this method runs in, so the
      * recovery query and the next attempt would both fail. See
-     * {@link PlayerRepository#insertIfFree}.</p>
+     * {@link PlayerProfileRepository#insertIfFree}.</p>
      */
-    private UUID create(Caller caller) {
+    private UUID register(String deviceId, String rawSecret, String ip) {
+        String secretHash = passwordEncoder.encode(rawSecret);
         for (int attempt = 0; attempt < MAX_NAME_ATTEMPTS; attempt++) {
-            players.insertIfFree(caller.deviceId(), generateName(), caller.ip());
+            players.insertIfFree(deviceId, generateName(), ip, secretHash);
 
             // A row for this device now means either our insert landed or a concurrent
             // request for the same device won — both are the right answer. No row means
             // the generated name was taken, so try a different one.
-            Optional<PlayerProfile> profile = players.findByDeviceId(caller.deviceId());
+            Optional<PlayerProfile> profile = players.findByDeviceId(deviceId);
             if (profile.isPresent()) {
                 // Once per player for the lifetime of the account, so it is worth INFO:
                 // it is the only record of when and how the population grew.

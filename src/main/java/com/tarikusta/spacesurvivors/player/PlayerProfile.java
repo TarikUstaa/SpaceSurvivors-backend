@@ -45,6 +45,18 @@ public class PlayerProfile {
     @Column(name = "last_ip", columnDefinition = "inet")
     private String lastIp;
 
+    /**
+     * BCrypt hash of the device's secret — the thing that finally makes an identity claim
+     * checkable. Never the secret itself: a copy of this table has to be worthless, and
+     * BCrypt is deliberately slow and salted per row so that a stolen one stays that way.
+     *
+     * <p>Null for rows created before V2. Those devices adopt a secret the first time they
+     * authenticate; refusing them instead would have locked existing players out of their
+     * own progress.</p>
+     */
+    @Column(name = "device_secret_hash")
+    private String deviceSecretHash;
+
     /** Set once by the database default and never touched again. */
     @Column(name = "first_login_date", insertable = false, updatable = false)
     private Instant firstLoginDate;
@@ -106,6 +118,14 @@ public class PlayerProfile {
 
     public void setDisplayName(String displayName) {
         this.displayName = displayName;
+    }
+
+    public String getDeviceSecretHash() {
+        return deviceSecretHash;
+    }
+
+    public void setDeviceSecretHash(String deviceSecretHash) {
+        this.deviceSecretHash = deviceSecretHash;
     }
 
     public String getCountry() {

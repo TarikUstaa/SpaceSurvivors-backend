@@ -1,3 +1,4 @@
 # Copy to application-local.properties (git-ignored) and set your local password.
 # Deployments do not use this file; they pass DB_PASSWORD through the environment.
 spring.datasource.password=change-me
+app.jwt.secret=at-least-32-bytes-of-random-text-here

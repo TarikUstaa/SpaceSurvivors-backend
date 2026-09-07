@@ -1,15 +1,16 @@
 package com.tarikusta.spacesurvivors.progress;
 
-import com.tarikusta.spacesurvivors.auth.Caller;
+import com.tarikusta.spacesurvivors.auth.CurrentPlayer;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.UUID;
 
 /**
  * HTTP for the cloud save. The only thing decided here is which status code a
@@ -28,8 +29,8 @@ public class ProgressController {
 
     /** GET /v1/progress -> 200 {progress, version}, or 404 when nothing is stored. */
     @GetMapping
-    public ProgressDtos.ProgressView load(@RequestAttribute(Caller.ATTR) Caller caller) {
-        return progress.load(caller);
+    public ProgressDtos.ProgressView load(@CurrentPlayer UUID playerId) {
+        return progress.load(playerId);
     }
 
     /**
@@ -40,9 +41,9 @@ public class ProgressController {
      * outcome to read its fields.</p>
      */
     @PutMapping
-    public ResponseEntity<Object> save(@RequestAttribute(Caller.ATTR) Caller caller,
+    public ResponseEntity<Object> save(@CurrentPlayer UUID playerId,
                                        @Valid @RequestBody ProgressDtos.SaveRequest body) {
-        return switch (progress.save(caller, body)) {
+        return switch (progress.save(playerId, body)) {
             case ProgressService.SaveOutcome.Accepted accepted ->
                     ResponseEntity.ok(ProgressDtos.SaveAccepted.of(accepted));
             case ProgressService.SaveOutcome.Conflict conflict ->

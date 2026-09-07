@@ -1,6 +1,7 @@
 package com.tarikusta.spacesurvivors.web;
 
 import com.tarikusta.spacesurvivors.domain.AlreadyTakenException;
+import com.tarikusta.spacesurvivors.domain.AuthenticationFailedException;
 import com.tarikusta.spacesurvivors.domain.InvalidInputException;
 import com.tarikusta.spacesurvivors.domain.NotFoundException;
 import com.tarikusta.spacesurvivors.domain.RuleViolationException;
@@ -53,6 +54,16 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(NotFoundException.class)
     public ProblemDetail notFound(NotFoundException e) {
         return problem(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
+    /**
+     * A device credential that did not check out. The message never distinguishes an
+     * unknown device from a wrong secret: telling them apart would let someone enumerate
+     * accounts one request at a time.
+     */
+    @ExceptionHandler(AuthenticationFailedException.class)
+    public ProblemDetail authenticationFailed(AuthenticationFailedException e) {
+        return problem(HttpStatus.UNAUTHORIZED, e.getMessage());
     }
 
     @ExceptionHandler(AlreadyTakenException.class)

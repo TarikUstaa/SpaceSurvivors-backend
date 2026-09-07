@@ -1,9 +1,7 @@
 package com.tarikusta.spacesurvivors.leaderboard;
 
-import com.tarikusta.spacesurvivors.auth.Caller;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.tarikusta.spacesurvivors.player.PlayerService;
 import com.tarikusta.spacesurvivors.domain.RuleViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,11 +45,14 @@ public class LeaderboardService {
     private static final int MAX_BOARD_SIZE = 200;
 
     private final LeaderboardEntryRepository board;
-    private final PlayerService players;
 
-    public LeaderboardService(LeaderboardEntryRepository board, PlayerService players) {
+    /**
+     * No PlayerService: the token already carried the player id, so nothing here has to
+     * ask who is calling. That dependency existed only to turn a device into a player on
+     * every request.
+     */
+    public LeaderboardService(LeaderboardEntryRepository board) {
         this.board = board;
-        this.players = players;
     }
 
     /**
@@ -62,11 +63,10 @@ public class LeaderboardService {
      * write all commit together or not at all.
      */
     @Transactional
-    public LeaderboardDtos.SubmitResult submit(Caller caller, LeaderboardDtos.Submission run) {
+    public LeaderboardDtos.SubmitResult submit(UUID playerId, LeaderboardDtos.Submission run) {
         String mode = normaliseMode(run.mode());
         rejectImplausible(run);
 
-        UUID playerId = players.resolveOrCreate(caller);
 
         // Narrow to float first: survived_seconds is a real column, so this is the value
         // that will actually be stored. Comparing the wider incoming double against a
@@ -90,12 +90,11 @@ public class LeaderboardService {
     /**
      * Top {@code limit} entries of a mode, plus where the caller sits.
      *
-     * <p>Read-only: a caller the server has never seen simply has no standing, which is
-     * the truthful answer. Creating a profile so that someone browsing the board can be
-     * told they are unranked would be a write on the most-read endpoint in the API.</p>
+     * <p>Read-only, and free of any device lookup: the token already carried the player
+     * id, so the most-read endpoint in the API touches nothing but the board itself.</p>
      */
     @Transactional(readOnly = true)
-    public LeaderboardDtos.Board board(Caller caller, String mode, int limit) {
+    public LeaderboardDtos.Board board(UUID playerId, String mode, int limit) {
         String normalised = normaliseMode(mode);
         int capped = Math.clamp(limit, 1, MAX_BOARD_SIZE);
 
@@ -106,8 +105,7 @@ public class LeaderboardService {
                     row.survivedSeconds(), row.kills(), row.reachedLevel()));
         }
 
-        LeaderboardDtos.Me me = players.resolve(caller)
-                .flatMap(playerId -> board.findStanding(playerId, normalised))
+        LeaderboardDtos.Me me = board.findStanding(playerId, normalised)
                 .map(standing -> new LeaderboardDtos.Me(standing.getRank(), standing.getSeconds()))
                 .orElse(null);
         return new LeaderboardDtos.Board(normalised, entries, me);

@@ -1,7 +1,5 @@
 package com.tarikusta.spacesurvivors.progress;
 
-import com.tarikusta.spacesurvivors.auth.Caller;
-import com.tarikusta.spacesurvivors.player.PlayerService;
 import com.tarikusta.spacesurvivors.domain.InvalidInputException;
 import com.tarikusta.spacesurvivors.domain.NotFoundException;
 import com.tarikusta.spacesurvivors.domain.TooLargeException;
@@ -26,12 +24,14 @@ public class ProgressService {
     private static final int MAX_PROGRESS_BYTES = 64 * 1024;
 
     private final PlayerProgressRepository progress;
-    private final PlayerService players;
     private final ObjectMapper json;
 
-    public ProgressService(PlayerProgressRepository progress, PlayerService players, ObjectMapper json) {
+    /**
+     * No PlayerService: the token already carried the player id, so this service never has
+     * to ask who is calling.
+     */
+    public ProgressService(PlayerProgressRepository progress, ObjectMapper json) {
         this.progress = progress;
-        this.players = players;
         this.json = json;
     }
 
@@ -39,14 +39,9 @@ public class ProgressService {
      * GET /v1/progress. A player with no save is a 404, not an empty object: the client
      * has to tell "nothing stored yet, upload mine" apart from "stored, and it is empty".
      *
-     * <p>An unrecognised device gets the same 404 rather than a freshly minted profile.
-     * Reading someone's save is not the moment to decide they exist, and creating rows
-     * from a read would let anyone grow the table by inventing device ids.</p>
      */
     @Transactional(readOnly = true)
-    public ProgressDtos.ProgressView load(Caller caller) {
-        UUID playerId = players.resolve(caller)
-                .orElseThrow(() -> new NotFoundException("no progress stored yet"));
+    public ProgressDtos.ProgressView load(UUID playerId) {
         return progress.findById(playerId)
                 .map(row -> new ProgressDtos.ProgressView(json.readTree(row.getProgressData()), row.getVersion()))
                 .orElseThrow(() -> new NotFoundException("no progress stored yet"));
@@ -61,9 +56,8 @@ public class ProgressService {
      * </ul>
      */
     @Transactional
-    public SaveOutcome save(Caller caller, ProgressDtos.SaveRequest request) {
+    public SaveOutcome save(UUID playerId, ProgressDtos.SaveRequest request) {
         ObjectNode toStore = requireObject(request.progress());
-        UUID playerId = players.resolveOrCreate(caller);
 
         // the server owns the identity, whatever the client put in the blob
         toStore.put("userId", playerId.toString());

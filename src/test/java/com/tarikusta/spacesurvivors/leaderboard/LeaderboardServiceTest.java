@@ -1,8 +1,6 @@
 package com.tarikusta.spacesurvivors.leaderboard;
 
-import com.tarikusta.spacesurvivors.auth.Caller;
 import com.tarikusta.spacesurvivors.domain.RuleViolationException;
-import com.tarikusta.spacesurvivors.player.PlayerService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -36,21 +34,16 @@ import static org.mockito.Mockito.when;
  */
 class LeaderboardServiceTest {
 
-    private static final Caller CALLER = new Caller("dev-test", "127.0.0.1");
     private static final UUID PLAYER = UUID.randomUUID();
 
     private LeaderboardEntryRepository board;
-    private PlayerService players;
     private LeaderboardService service;
 
     @BeforeEach
     void setUp() {
         board = Mockito.mock(LeaderboardEntryRepository.class);
-        players = Mockito.mock(PlayerService.class);
-        service = new LeaderboardService(board, players);
+        service = new LeaderboardService(board);
 
-        when(players.resolveOrCreate(any())).thenReturn(PLAYER);
-        when(players.resolve(any())).thenReturn(Optional.of(PLAYER));
     }
 
     private static LeaderboardDtos.Submission run(String mode, double seconds, int kills) {
@@ -85,7 +78,7 @@ class LeaderboardServiceTest {
             when(board.findPersonalBest(PLAYER, "infinite")).thenReturn(Optional.empty());
             when(board.findStanding(PLAYER, "infinite")).thenReturn(Optional.of(standing(1, 300)));
 
-            LeaderboardDtos.SubmitResult result = service.submit(CALLER, run("infinite", 300, 100));
+            LeaderboardDtos.SubmitResult result = service.submit(PLAYER, run("infinite", 300, 100));
 
             assertThat(result.isNewRecord()).isTrue();
             verify(board).saveBest(PLAYER, "infinite", 300, 100, 10, 1);
@@ -96,7 +89,7 @@ class LeaderboardServiceTest {
             when(board.findPersonalBest(PLAYER, "infinite")).thenReturn(Optional.of(250.0));
             when(board.findStanding(PLAYER, "infinite")).thenReturn(Optional.of(standing(1, 300)));
 
-            assertThat(service.submit(CALLER, run("infinite", 300, 100)).isNewRecord()).isTrue();
+            assertThat(service.submit(PLAYER, run("infinite", 300, 100)).isNewRecord()).isTrue();
             verify(board).saveBest(any(), anyString(), anyDouble(), anyInt(), anyInt(), anyInt());
         }
 
@@ -105,7 +98,7 @@ class LeaderboardServiceTest {
             when(board.findPersonalBest(PLAYER, "infinite")).thenReturn(Optional.of(300.0));
             when(board.findStanding(PLAYER, "infinite")).thenReturn(Optional.of(standing(2, 300)));
 
-            LeaderboardDtos.SubmitResult result = service.submit(CALLER, run("infinite", 250, 90));
+            LeaderboardDtos.SubmitResult result = service.submit(PLAYER, run("infinite", 250, 90));
 
             assertThat(result.isNewRecord()).isFalse();
             assertThat(result.personalBest()).isEqualTo(300);
@@ -117,7 +110,7 @@ class LeaderboardServiceTest {
             when(board.findPersonalBest(PLAYER, "infinite")).thenReturn(Optional.of(300.0));
             when(board.findStanding(PLAYER, "infinite")).thenReturn(Optional.of(standing(1, 300)));
 
-            assertThat(service.submit(CALLER, run("infinite", 300, 100)).isNewRecord()).isFalse();
+            assertThat(service.submit(PLAYER, run("infinite", 300, 100)).isNewRecord()).isFalse();
             verify(board, never()).saveBest(any(), anyString(), anyDouble(), anyInt(), anyInt(), anyInt());
         }
     }
@@ -132,19 +125,19 @@ class LeaderboardServiceTest {
             when(board.findPersonalBest(any(), anyString())).thenReturn(Optional.empty());
             when(board.findStanding(any(), anyString())).thenReturn(Optional.of(standing(1, 10)));
 
-            assertThat(service.submit(CALLER, run(mode, 10, 1))).isNotNull();
+            assertThat(service.submit(PLAYER, run(mode, 10, 1))).isNotNull();
         }
 
         @ParameterizedTest
         @ValueSource(strings = { "sandbox", "", "   ", "infinite2" })
         void rejectsAnythingElse(String mode) {
-            assertThatThrownBy(() -> service.submit(CALLER, run(mode, 10, 1)))
+            assertThatThrownBy(() -> service.submit(PLAYER, run(mode, 10, 1)))
                     .isInstanceOf(RuleViolationException.class);
         }
 
         @Test
         void rejectsNull() {
-            assertThatThrownBy(() -> service.submit(CALLER, run(null, 10, 1)))
+            assertThatThrownBy(() -> service.submit(PLAYER, run(null, 10, 1)))
                     .isInstanceOf(RuleViolationException.class);
         }
     }
@@ -155,7 +148,7 @@ class LeaderboardServiceTest {
 
         @Test
         void rejectsAKillRateTheGameCannotProduce() {
-            assertThatThrownBy(() -> service.submit(CALLER, run("infinite", 10, 50_000)))
+            assertThatThrownBy(() -> service.submit(PLAYER, run("infinite", 10, 50_000)))
                     .isInstanceOf(RuleViolationException.class)
                     .hasMessageContaining("kill rate");
             verify(board, never()).saveBest(any(), anyString(), anyDouble(), anyInt(), anyInt(), anyInt());
@@ -168,7 +161,7 @@ class LeaderboardServiceTest {
             when(board.findPersonalBest(any(), anyString())).thenReturn(Optional.empty());
             when(board.findStanding(any(), anyString())).thenReturn(Optional.of(standing(1, 2)));
 
-            assertThat(service.submit(CALLER, run("infinite", 2, 500))).isNotNull();
+            assertThat(service.submit(PLAYER, run("infinite", 2, 500))).isNotNull();
         }
     }
 
@@ -183,7 +176,7 @@ class LeaderboardServiceTest {
                     new BoardRow("Kaptan", 300, 420, 18)));
             when(board.findStanding(PLAYER, "infinite")).thenReturn(Optional.of(standing(2, 300)));
 
-            LeaderboardDtos.Board result = service.board(CALLER, "infinite", 100);
+            LeaderboardDtos.Board result = service.board(PLAYER, "infinite", 100);
 
             assertThat(result.entries()).extracting(LeaderboardDtos.BoardEntry::rank).containsExactly(1, 2);
             assertThat(result.entries()).extracting(LeaderboardDtos.BoardEntry::displayName)
@@ -192,23 +185,11 @@ class LeaderboardServiceTest {
         }
 
         @Test
-        @DisplayName("browsing the board never creates a player")
-        void doesNotCreateAProfileForAnUnknownCaller() {
-            when(players.resolve(any())).thenReturn(Optional.empty());
-            when(board.topEntries(anyString(), any(Pageable.class))).thenReturn(List.of());
-
-            assertThat(service.board(CALLER, "infinite", 10).me()).isNull();
-
-            // The point of splitting resolve from resolveOrCreate: a read must not write.
-            verify(players, never()).resolveOrCreate(any());
-        }
-
-        @Test
         void leavesMeNullWhenTheCallerHasNoEntry() {
             when(board.topEntries(eq("campaign"), any(Pageable.class))).thenReturn(List.of());
             when(board.findStanding(PLAYER, "campaign")).thenReturn(Optional.empty());
 
-            assertThat(service.board(CALLER, "campaign", 100).me()).isNull();
+            assertThat(service.board(PLAYER, "campaign", 100).me()).isNull();
         }
 
         @ParameterizedTest
@@ -217,7 +198,7 @@ class LeaderboardServiceTest {
             when(board.topEntries(anyString(), any(Pageable.class))).thenReturn(List.of());
             when(board.findStanding(any(), anyString())).thenReturn(Optional.empty());
 
-            service.board(CALLER, "infinite", requested);
+            service.board(PLAYER, "infinite", requested);
 
             int expected = Math.clamp(requested, 1, 200);
             ArgumentCaptor<Pageable> page = ArgumentCaptor.forClass(Pageable.class);
