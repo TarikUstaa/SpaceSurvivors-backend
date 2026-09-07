@@ -37,7 +37,7 @@ That repo was deleted. Current repo starts at `29c80e5`.
 
 Tarik's mentor (25-30 years of Java) reviewed the code and asked for three things.
 
-**1. Use `JpaRepository`, not `JdbcClient`.** Accepted — D2 is overturned. The technical
+**1. Use `JpaRepository`, not `JdbcClient`. — DONE** (`8d93a11`, `c672dac`, `e3039ce`). D2 is overturned. The technical
 case for `JdbcClient` was real but optimised for the wrong goal: this project exists for
 Tarik to learn, and Spring Data JPA is what the industry and the job market mean by
 "Spring". It also removes hand-written code that JPA already provides — `@Version` *is*
@@ -59,8 +59,24 @@ Two places that need care, not blockers:
 - The upsert (`ON CONFLICT DO UPDATE`) has no JPA equivalent → keep it as
   `@Query(nativeQuery = true)`. Mixing is normal and worth saying out loud.
 
-The schema does not change; only the repository layer does. **Not started** — deferred
-because it needs a whole session, and a half-finished migration leaves the build broken.
+The schema did not change; only the repository layer did, one table per commit so the
+build stayed green throughout. What it actually taught, beyond the syntax:
+
+- `@Version` starts at **0**, where the hand-written lock started at 1. That is a wire
+  contract change; Unity is unaffected (it stores whatever it is told and echoes it back)
+  and the Postman collection was updated.
+- The service still compares versions itself rather than letting `@Version` raise, because
+  a raised `OptimisticLockException` marks the transaction rollback-only — the query that
+  fetches the server's copy for the 409 body could not run afterwards. Same shape as D13.
+- `@Modifying(flushAutomatically, clearAutomatically)` is what lets a read immediately
+  after a native write see the row instead of a cached absence.
+- The `updated_at` trigger **cannot be backdated** — it stamps `now()` on every update,
+  including one trying to age a row. Testing the touch throttle means disabling the trigger
+  around the change. That is the column doing its job.
+- Four queries, four techniques: derived (`JpaRepository`'s own), scalar JPQL, JPQL
+  constructor projection, native. Mixing is correct, not a compromise.
+
+Repository tests against real Postgres came with it — the gap the review flagged. 88 tests.
 
 **2. "Why is the parameter in a header?"** Because it is a credential, not a parameter:
 it applies to every endpoint uniformly, and query strings land in access logs, proxy
@@ -197,6 +213,13 @@ wallet/kills/etc. out of the blob. They were for support and analytics we do not
 yet; easy to add later in a `V2__`.
 
 ### D2 — `JdbcClient`, not JPA
+
+> **OVERTURNED by the mentor review, 2026-09-07.** All three tables are JPA entities now.
+> The reasoning below was sound in isolation but optimised for the wrong goal: this project
+> exists for Tarik to learn, and Spring Data JPA is what the industry means by "Spring".
+> It also removed hand-written code JPA already provides — `@Version` *was* the optimistic
+> lock implemented by counting affected rows. Kept as the record of a decision and why it
+> was wrong.
 
 There is no `@Entity` anywhere. See `docs/ogrenme-rehberi.md` §2 for the full
 reasoning; in short: the data model is not an object graph, `jsonb` is awkward under

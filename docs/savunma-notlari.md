@@ -10,7 +10,8 @@ nasıl çalıştığı `docs/ogrenme-rehberi.md`'de.
 
 ## "Neden JPA kullanmadın?"
 
-**Artık kullanacağız — haklısın.** Gerekçem şuydu: profil tek bir jsonb blob, Java
+**Geçtik — haklıydın.** Üç tablo da artık `@Entity`, üç repository de `JpaRepository`.
+Önceki Gerekçem şuydu: profil tek bir jsonb blob, Java
 nesnesine hiç açılmıyor; iki kritik sorgu (`ON CONFLICT` upsert ve sıralama alt sorgusu)
 zaten native SQL; JPA'nın örtük davranışları (lazy loading, dirty checking) öğrenirken
 kafa karıştırıyor.
@@ -19,8 +20,21 @@ kafa karıştırıyor.
 denince kastedilen Spring Data JPA. Üstelik JPA bir noktada beni doğrudan yanıltıyor:
 optimistic locking'i elle yazdık, `@Version` onu hazır veriyor.
 
-Geçişte iki yer dikkat isteyecek: `leaderboard`'ın bileşik anahtarı (`@IdClass`) ve
-upsert'ün JPA karşılığı olmaması (`@Query(nativeQuery = true)` kalacak).
+Geçişte öğrendiklerim, sorarsa:
+
+- **`@Version` 0'dan başlıyor**, bizim elle yazdığımız 1'den. Sözleşme değişikliği; Unity
+  etkilenmedi çünkü sayıyı yorumlamıyor, geri yolluyor.
+- **Servis hâlâ sürümü kendi karşılaştırıyor**, `@Version`'ın fırlatmasını beklemiyor —
+  çünkü fırlayan `OptimisticLockException` transaction'ı rollback-only işaretler ve 409
+  gövdesi için sunucunun kopyasını çeken sorgu artık çalışamaz. `PlayerService.create`'in
+  düştüğü tuzağın aynısı.
+- **Bileşik anahtar** (`player_id, mode`) `@IdClass` gerektirdi; `Serializable` +
+  `equals`/`hashCode` şart, çünkü persistence context bir entity'yi onunla tanıyor.
+- **Upsert ve rank sorgusu native kaldı** — `ON CONFLICT` ve SELECT içindeki korelasyonlu
+  alt sorgu JPA'da ifade edilemiyor. Karma kullanım normaldir.
+- **`updated_at` trigger'ı geriye alınamıyor** — her güncellemede `now()` basıyor, tarihi
+  eskitmeye çalışan güncelleme dahil. Kolonun işi bu; throttle'ı test etmek için trigger'ı
+  geçici kapatmak gerekti.
 
 ## "Neden profil bir jsonb blob? Kolonlara açsana."
 
@@ -49,7 +63,8 @@ cihaza bağlamanın hiçbir yolu olmazdı. Ayrı olduğu için gerçek giriş ge
 
 ## "Optimistic locking'i neden elle yazdın?"
 
-*(JPA geçişinden sonra bu soru düşecek — `@Version` devralacak.)*
+**Artık elle değil — `@Version` devraldı.** Aşağısı mekanizmanın kendisi, ki JPA'nın
+ürettiği SQL de birebir aynı:
 
 İki cihaz aynı hesapta gerçek bir senaryo ve korumasız hâli tam olarak bulut kaydın
 önlemek için var olduğu şey: sessiz üzerine yazma, kaybolan ilerleme. Pesimistik kilit
@@ -123,11 +138,17 @@ açılışta patlar. O pencere kapandı: bundan sonrası `V2__`.
 
 ## "Testler ne kadar kapsıyor?"
 
-69 test: servislerin iş kuralları (birim), filtrenin header işleme, controller status
+88 test: servislerin iş kuralları (birim), filtrenin header işleme, controller status
 eşlemeleri (`@WebMvcTest`).
 
-**Eksik olan: repository testleri.** Optimistic lock ve upsert davranışı ancak gerçek
-Postgres'e karşı doğrulanabilir — Testcontainers ile yazılmalı, henüz yok.
+**Repository testleri artık var** — gerçek Postgres'e karşı 17 test: jsonb'nin çift
+kodlanmadan gidip gelmesi, `@Version`'ın bayat yazımı reddetmesi, `ON CONFLICT`'in
+fırlatmak yerine 0 döndürmesi, isim benzersizliğinin harf duyarsız olması, touch
+throttle'ının hem tutması hem bırakması, upsert'ün satır eklemek yerine değiştirmesi,
+rank'in tablo sıralamasıyla uyuşması.
+
+**Hâlâ eksik:** Testcontainers. Testler yerel Postgres'e bağlı; CI'da çalışması için
+kapsayıcı tabanlı olmalı.
 
 Bir test benim yanlış varsayımımı yakaladı: bozuk bir IP header'ında `null` döneceğini
 sanmıştım, kod soket adresine geri düşüyordu — ki daha doğrusu o. Testi düzelttim.
