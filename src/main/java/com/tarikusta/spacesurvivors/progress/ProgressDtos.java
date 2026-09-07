@@ -1,5 +1,6 @@
 package com.tarikusta.spacesurvivors.progress;
 
+import jakarta.validation.constraints.PositiveOrZero;
 import tools.jackson.databind.JsonNode;
 
 /**
@@ -15,9 +16,14 @@ public final class ProgressDtos {
 
     /**
      * Body of {@code PUT /v1/progress}: {@code {"progress": {...}, "version": N}}.
-     * {@code version} is what the client last read; 0 means "I have never synced".
+     * {@code version} is what the client last read; 0 means "I have never synced", so
+     * a negative one is a client bug and deserves a 400 rather than a silent 409.
+     *
+     * <p>That {@code progress} must be a JSON <em>object</em> is checked in the service:
+     * bean validation has no annotation for it, and it is a rule about the payload's
+     * meaning rather than its shape.</p>
      */
-    public record SaveRequest(JsonNode progress, int version) {
+    public record SaveRequest(JsonNode progress, @PositiveOrZero int version) {
     }
 
     /** 200 from GET — the save and the version to send back on the next write. */

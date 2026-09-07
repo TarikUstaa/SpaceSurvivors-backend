@@ -1,6 +1,7 @@
 package com.tarikusta.spacesurvivors.progress;
 
 import com.tarikusta.spacesurvivors.auth.Caller;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,8 +35,8 @@ public class ProgressController {
     /** PUT /v1/progress -> 200 {version}, or 409 {serverVersion, progress} on a stale write. */
     @PutMapping
     public ResponseEntity<?> save(@RequestAttribute(Caller.ATTR) Caller caller,
-                                  @RequestBody ProgressDtos.SaveRequest body) {
-        return switch (progress.save(caller, body.progress(), body.version())) {
+                                  @Valid @RequestBody ProgressDtos.SaveRequest body) {
+        return switch (progress.save(caller, body)) {
             case ProgressService.SaveOutcome.Accepted a ->
                     ResponseEntity.ok(new ProgressDtos.SaveAccepted(a.version()));
             case ProgressService.SaveOutcome.Conflict c ->

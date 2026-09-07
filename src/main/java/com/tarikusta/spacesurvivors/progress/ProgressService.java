@@ -55,12 +55,12 @@ public class ProgressService {
      * </ul>
      */
     @Transactional
-    public SaveOutcome save(Caller caller, JsonNode body, int clientVersion) {
-        requireObject(body);
+    public SaveOutcome save(Caller caller, ProgressDtos.SaveRequest request) {
+        requireObject(request.progress());
         UUID playerId = players.resolveOrCreate(caller);
 
         // the server owns the identity, whatever the client put in the blob
-        ObjectNode toStore = (ObjectNode) body;
+        ObjectNode toStore = (ObjectNode) request.progress();
         toStore.put("userId", playerId.toString());
 
         String progressJson = json.writeValueAsString(toStore);
@@ -74,7 +74,7 @@ public class ProgressService {
             return new SaveOutcome.Accepted(1);
         }
 
-        Optional<Integer> newVersion = progress.update(playerId, progressJson, clientVersion);
+        Optional<Integer> newVersion = progress.update(playerId, progressJson, request.version());
         if (newVersion.isPresent()) {
             return new SaveOutcome.Accepted(newVersion.get());
         }
