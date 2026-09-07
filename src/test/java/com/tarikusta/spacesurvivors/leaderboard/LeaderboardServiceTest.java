@@ -9,15 +9,18 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -36,13 +39,13 @@ class LeaderboardServiceTest {
     private static final Caller CALLER = new Caller("dev-test", "127.0.0.1");
     private static final UUID PLAYER = UUID.randomUUID();
 
-    private LeaderboardRepository board;
+    private LeaderboardEntryRepository board;
     private PlayerService players;
     private LeaderboardService service;
 
     @BeforeEach
     void setUp() {
-        board = Mockito.mock(LeaderboardRepository.class);
+        board = Mockito.mock(LeaderboardEntryRepository.class);
         players = Mockito.mock(PlayerService.class);
         service = new LeaderboardService(board, players);
 
@@ -53,14 +56,33 @@ class LeaderboardServiceTest {
         return new LeaderboardDtos.Submission(mode, seconds, kills, 10, 1);
     }
 
+    /**
+     * A rank + time pair, as the native standing query projects it. Implemented rather
+     * than mocked: an interface this small needs no framework, and a helper that stubs
+     * cannot be called inside another stubbing's argument list.
+     */
+    private static LeaderboardEntryRepository.Standing standing(int rank, double seconds) {
+        return new LeaderboardEntryRepository.Standing() {
+            @Override
+            public double getSeconds() {
+                return seconds;
+            }
+
+            @Override
+            public int getRank() {
+                return rank;
+            }
+        };
+    }
+
     @Nested
     @DisplayName("only a better run is written")
     class PersonalBest {
 
         @Test
         void writesWhenThereIsNoPreviousEntry() {
-            when(board.personalBest(PLAYER, "infinite")).thenReturn(Optional.empty());
-            when(board.findMe(PLAYER, "infinite")).thenReturn(Optional.of(new LeaderboardDtos.Me(1, 300)));
+            when(board.findPersonalBest(PLAYER, "infinite")).thenReturn(Optional.empty());
+            when(board.findStanding(PLAYER, "infinite")).thenReturn(Optional.of(standing(1, 300)));
 
             LeaderboardDtos.SubmitResult result = service.submit(CALLER, run("infinite", 300, 100));
 
@@ -70,8 +92,8 @@ class LeaderboardServiceTest {
 
         @Test
         void writesWhenTheRunBeatsTheStoredBest() {
-            when(board.personalBest(PLAYER, "infinite")).thenReturn(Optional.of(250.0));
-            when(board.findMe(PLAYER, "infinite")).thenReturn(Optional.of(new LeaderboardDtos.Me(1, 300)));
+            when(board.findPersonalBest(PLAYER, "infinite")).thenReturn(Optional.of(250.0));
+            when(board.findStanding(PLAYER, "infinite")).thenReturn(Optional.of(standing(1, 300)));
 
             assertThat(service.submit(CALLER, run("infinite", 300, 100)).isNewRecord()).isTrue();
             verify(board).saveBest(any(), anyString(), anyDouble(), anyInt(), anyInt(), anyInt());
@@ -79,8 +101,8 @@ class LeaderboardServiceTest {
 
         @Test
         void doesNotWriteWhenTheRunIsWorse() {
-            when(board.personalBest(PLAYER, "infinite")).thenReturn(Optional.of(300.0));
-            when(board.findMe(PLAYER, "infinite")).thenReturn(Optional.of(new LeaderboardDtos.Me(2, 300)));
+            when(board.findPersonalBest(PLAYER, "infinite")).thenReturn(Optional.of(300.0));
+            when(board.findStanding(PLAYER, "infinite")).thenReturn(Optional.of(standing(2, 300)));
 
             LeaderboardDtos.SubmitResult result = service.submit(CALLER, run("infinite", 250, 90));
 
@@ -91,8 +113,8 @@ class LeaderboardServiceTest {
 
         @Test
         void doesNotWriteWhenTheRunOnlyEqualsTheStoredBest() {
-            when(board.personalBest(PLAYER, "infinite")).thenReturn(Optional.of(300.0));
-            when(board.findMe(PLAYER, "infinite")).thenReturn(Optional.of(new LeaderboardDtos.Me(1, 300)));
+            when(board.findPersonalBest(PLAYER, "infinite")).thenReturn(Optional.of(300.0));
+            when(board.findStanding(PLAYER, "infinite")).thenReturn(Optional.of(standing(1, 300)));
 
             assertThat(service.submit(CALLER, run("infinite", 300, 100)).isNewRecord()).isFalse();
             verify(board, never()).saveBest(any(), anyString(), anyDouble(), anyInt(), anyInt(), anyInt());
@@ -106,8 +128,8 @@ class LeaderboardServiceTest {
         @ParameterizedTest
         @ValueSource(strings = { "infinite", "INFINITE", "  Infinite  ", "campaign" })
         void acceptsTheGamesModesInAnyCasing(String mode) {
-            when(board.personalBest(any(), anyString())).thenReturn(Optional.empty());
-            when(board.findMe(any(), anyString())).thenReturn(Optional.of(new LeaderboardDtos.Me(1, 10)));
+            when(board.findPersonalBest(any(), anyString())).thenReturn(Optional.empty());
+            when(board.findStanding(any(), anyString())).thenReturn(Optional.of(standing(1, 10)));
 
             assertThat(service.submit(CALLER, run(mode, 10, 1))).isNotNull();
         }
@@ -142,8 +164,8 @@ class LeaderboardServiceTest {
         void doesNotJudgeTheRateOnVeryShortRuns() {
             // The opening spawn burst makes the ratio meaningless below the threshold,
             // so a short run with a high count must still be accepted.
-            when(board.personalBest(any(), anyString())).thenReturn(Optional.empty());
-            when(board.findMe(any(), anyString())).thenReturn(Optional.of(new LeaderboardDtos.Me(1, 2)));
+            when(board.findPersonalBest(any(), anyString())).thenReturn(Optional.empty());
+            when(board.findStanding(any(), anyString())).thenReturn(Optional.of(standing(1, 2)));
 
             assertThat(service.submit(CALLER, run("infinite", 2, 500))).isNotNull();
         }
@@ -155,10 +177,10 @@ class LeaderboardServiceTest {
 
         @Test
         void numbersRowsByPositionAndIncludesTheCaller() {
-            when(board.top("infinite", 100)).thenReturn(List.of(
-                    new LeaderboardRepository.BoardRow("Ada", 600, 900, 30),
-                    new LeaderboardRepository.BoardRow("Kaptan", 300, 420, 18)));
-            when(board.findMe(PLAYER, "infinite")).thenReturn(Optional.of(new LeaderboardDtos.Me(2, 300)));
+            when(board.topEntries(eq("infinite"), any(Pageable.class))).thenReturn(List.of(
+                    new BoardRow("Ada", 600, 900, 30),
+                    new BoardRow("Kaptan", 300, 420, 18)));
+            when(board.findStanding(PLAYER, "infinite")).thenReturn(Optional.of(standing(2, 300)));
 
             LeaderboardDtos.Board result = service.board(CALLER, "infinite", 100);
 
@@ -170,8 +192,8 @@ class LeaderboardServiceTest {
 
         @Test
         void leavesMeNullWhenTheCallerHasNoEntry() {
-            when(board.top("campaign", 100)).thenReturn(List.of());
-            when(board.findMe(PLAYER, "campaign")).thenReturn(Optional.empty());
+            when(board.topEntries(eq("campaign"), any(Pageable.class))).thenReturn(List.of());
+            when(board.findStanding(PLAYER, "campaign")).thenReturn(Optional.empty());
 
             assertThat(service.board(CALLER, "campaign", 100).me()).isNull();
         }
@@ -179,13 +201,15 @@ class LeaderboardServiceTest {
         @ParameterizedTest
         @ValueSource(ints = { -5, 0, 1, 100, 200, 5000 })
         void clampsTheRequestedSizeIntoRange(int requested) {
-            when(board.top(anyString(), anyInt())).thenReturn(List.of());
-            when(board.findMe(any(), anyString())).thenReturn(Optional.empty());
+            when(board.topEntries(anyString(), any(Pageable.class))).thenReturn(List.of());
+            when(board.findStanding(any(), anyString())).thenReturn(Optional.empty());
 
             service.board(CALLER, "infinite", requested);
 
             int expected = Math.clamp(requested, 1, 200);
-            verify(board).top("infinite", expected);
+            ArgumentCaptor<Pageable> page = ArgumentCaptor.forClass(Pageable.class);
+            verify(board).topEntries(eq("infinite"), page.capture());
+            assertThat(page.getValue().getPageSize()).isEqualTo(expected);
         }
     }
 }

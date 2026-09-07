@@ -12,6 +12,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.data.domain.PageRequest;
 
 /**
  * The rules of the leaderboard. No SQL, no HTTP.
@@ -41,10 +42,10 @@ public class LeaderboardService {
     /** Guard rails for GET: never let a caller ask for the whole table. */
     private static final int MAX_BOARD_SIZE = 200;
 
-    private final LeaderboardRepository board;
+    private final LeaderboardEntryRepository board;
     private final PlayerService players;
 
-    public LeaderboardService(LeaderboardRepository board, PlayerService players) {
+    public LeaderboardService(LeaderboardEntryRepository board, PlayerService players) {
         this.board = board;
         this.players = players;
     }
@@ -63,7 +64,7 @@ public class LeaderboardService {
 
         UUID playerId = players.resolveOrCreate(caller);
 
-        double previousBest = board.personalBest(playerId, mode).orElse(-1.0);
+        double previousBest = board.findPersonalBest(playerId, mode).orElse(-1.0);
         boolean isNewRecord = run.survivedSeconds() > previousBest;
         if (isNewRecord) {
             board.saveBest(playerId, mode, run.survivedSeconds(), run.kills(),
@@ -71,8 +72,9 @@ public class LeaderboardService {
         }
 
         // read back rather than compute: this is what the board will actually show
-        return board.findMe(playerId, mode)
-                .map(me -> new LeaderboardDtos.SubmitResult(me.survivedSeconds(), isNewRecord, me.rank()))
+        return board.findStanding(playerId, mode)
+                .map(standing -> new LeaderboardDtos.SubmitResult(
+                        standing.getSeconds(), isNewRecord, standing.getRank()))
                 .orElseGet(() -> new LeaderboardDtos.SubmitResult(run.survivedSeconds(), isNewRecord, null));
     }
 
@@ -84,12 +86,14 @@ public class LeaderboardService {
 
         List<LeaderboardDtos.BoardEntry> entries = new ArrayList<>();
         int rank = 1;
-        for (LeaderboardRepository.BoardRow row : board.top(normalised, capped)) {
+        for (BoardRow row : board.topEntries(normalised, PageRequest.ofSize(capped))) {
             entries.add(new LeaderboardDtos.BoardEntry(rank++, row.displayName(),
                     row.survivedSeconds(), row.kills(), row.reachedLevel()));
         }
 
-        LeaderboardDtos.Me me = board.findMe(players.resolveOrCreate(caller), normalised).orElse(null);
+        LeaderboardDtos.Me me = board.findStanding(players.resolveOrCreate(caller), normalised)
+                .map(standing -> new LeaderboardDtos.Me(standing.getRank(), standing.getSeconds()))
+                .orElse(null);
         return new LeaderboardDtos.Board(normalised, entries, me);
     }
 
