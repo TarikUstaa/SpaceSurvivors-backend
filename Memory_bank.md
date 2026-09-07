@@ -33,6 +33,44 @@ That repo was deleted. Current repo starts at `29c80e5`.
 
 ---
 
+## Mentor review — 2026-09-07 (ACT ON THIS NEXT)
+
+Tarik's mentor (25-30 years of Java) reviewed the code and asked for three things.
+
+**1. Use `JpaRepository`, not `JdbcClient`.** Accepted — D2 is overturned. The technical
+case for `JdbcClient` was real but optimised for the wrong goal: this project exists for
+Tarik to learn, and Spring Data JPA is what the industry and the job market mean by
+"Spring". It also removes hand-written code that JPA already provides — `@Version` *is*
+the optimistic lock we implemented by counting affected rows.
+
+Shape it takes:
+```java
+@Entity @Table(name = "player_progress")
+class PlayerProgress {
+    @Id UUID playerId;
+    @JdbcTypeCode(SqlTypes.JSON) String progressData;
+    @Version int version;
+}
+interface PlayerProgressRepository extends JpaRepository<PlayerProgress, UUID> { }
+```
+
+Two places that need care, not blockers:
+- `leaderboard` has a composite key (`player_id, mode`) → `@IdClass` or `@EmbeddedId`.
+- The upsert (`ON CONFLICT DO UPDATE`) has no JPA equivalent → keep it as
+  `@Query(nativeQuery = true)`. Mixing is normal and worth saying out loud.
+
+The schema does not change; only the repository layer does. **Not started** — deferred
+because it needs a whole session, and a half-finished migration leaves the build broken.
+
+**2. "Why is the parameter in a header?"** Because it is a credential, not a parameter:
+it applies to every endpoint uniformly, and query strings land in access logs, proxy
+logs and browser history. The likely real objection is the `X-` prefix, which RFC 6648
+retired in 2012. Move to `Authorization: Device <id>`, which also makes the Firebase swap
+a change of scheme rather than of header. **Not done.**
+
+**3. A Postman collection showing the project's flow** — the artefact he actually wants
+to see.
+
 ## Decisions
 
 *Newest first. Superseded entries are kept — the reasoning is the record.*
