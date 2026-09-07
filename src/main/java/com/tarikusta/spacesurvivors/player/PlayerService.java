@@ -63,7 +63,7 @@ public class PlayerService {
     @Transactional
     public PlayerDtos.PlayerView rename(Caller caller, String requestedName) {
         UUID playerId = resolveOrCreate(caller);
-        rename(playerId, requestedName);
+        applyName(playerId, requestedName);
         return toView(require(playerId));
     }
 
@@ -72,14 +72,17 @@ public class PlayerService {
     }
 
     /**
-     * Rename a player.
+     * Write a chosen name, once it passes the rules.
      *
      * <p>Validation lives here rather than on the request record because it is a rule
      * about names, not about one endpoint's payload — the generated default has to
      * satisfy it too.</p>
+     *
+     * <p>No "is this name free?" query first: between the check and the write another
+     * request could take it. The unique index is the real guard, and this is the one
+     * place a raised violation is safe — nothing else runs afterwards.</p>
      */
-    @Transactional
-    public void rename(UUID playerId, String requestedName) {
+    private void applyName(UUID playerId, String requestedName) {
         String name = requestedName == null ? "" : requestedName.trim();
         requireValidName(name);
         try {
@@ -91,7 +94,7 @@ public class PlayerService {
         }
     }
 
-    public PlayerRepository.PlayerRow require(UUID playerId) {
+    private PlayerRepository.PlayerRow require(UUID playerId) {
         return players.find(playerId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "player not found"));
     }
@@ -99,22 +102,27 @@ public class PlayerService {
     /**
      * First sighting of a device: mint a profile with a generated name.
      *
-     * <p>A clash can come from either unique constraint, and the driver does not say
-     * which. Re-reading by device tells us: if a row is now there, another request for
-     * the same device won the race and we adopt it; otherwise it was the name, so try
-     * a different one.</p>
+     * <p>An insert that changes nothing means one of two things, and they need opposite
+     * responses. If a row for this device now exists, a concurrent request for the same
+     * device got there first and its player is the right answer — retrying would be
+     * wrong. Otherwise the generated name was taken, and a different one will work.</p>
+     *
+     * <p>This deliberately does not go through a caught {@code DuplicateKeyException}:
+     * a raised constraint violation aborts the transaction this method runs in, so the
+     * recovery query and the next attempt would both fail. See
+     * {@link PlayerRepository#insertIfFree}.</p>
      */
     private UUID create(Caller caller) {
         for (int attempt = 0; attempt < MAX_NAME_ATTEMPTS; attempt++) {
-            try {
-                return players.insert(caller.deviceId(), generateName(), caller.ip());
-            } catch (DuplicateKeyException e) {
-                Optional<UUID> raced = players.findIdByDevice(caller.deviceId());
-                if (raced.isPresent()) {
-                    return raced.get();
-                }
-                // name collision — fall through and try another
+            Optional<UUID> created = players.insertIfFree(caller.deviceId(), generateName(), caller.ip());
+            if (created.isPresent()) {
+                return created.get();
             }
+            Optional<UUID> raced = players.findIdByDevice(caller.deviceId());
+            if (raced.isPresent()) {
+                return raced.get();
+            }
+            // the name was taken, not the device — try another
         }
         throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "could not allocate a player name");
     }

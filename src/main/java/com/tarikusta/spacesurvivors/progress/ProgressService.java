@@ -56,11 +56,10 @@ public class ProgressService {
      */
     @Transactional
     public SaveOutcome save(Caller caller, ProgressDtos.SaveRequest request) {
-        requireObject(request.progress());
+        ObjectNode toStore = requireObject(request.progress());
         UUID playerId = players.resolveOrCreate(caller);
 
         // the server owns the identity, whatever the client put in the blob
-        ObjectNode toStore = (ObjectNode) request.progress();
         toStore.put("userId", playerId.toString());
 
         String progressJson = json.writeValueAsString(toStore);
@@ -68,25 +67,37 @@ public class ProgressService {
             throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "progress exceeds 64 KB");
         }
 
+        // Try the write first. The common case — an established player saving again —
+        // then costs one statement, and only the two rarer outcomes need a look at
+        // what is actually stored.
+        Optional<Integer> newVersion = progress.update(playerId, progressJson, request.version());
+        if (newVersion.isPresent()) {
+            return new SaveOutcome.Accepted(newVersion.get());
+        }
+
+        // Nothing was updated, which means either there is no row yet or the version
+        // had moved on. Only now is it worth asking which.
         Optional<ProgressRepository.StoredProgress> existing = progress.find(playerId);
         if (existing.isEmpty()) {
             progress.insert(playerId, progressJson);
             return new SaveOutcome.Accepted(1);
         }
 
-        Optional<Integer> newVersion = progress.update(playerId, progressJson, request.version());
-        if (newVersion.isPresent()) {
-            return new SaveOutcome.Accepted(newVersion.get());
-        }
-
         ProgressRepository.StoredProgress current = existing.get();
         return new SaveOutcome.Conflict(current.version(), json.readTree(current.json()));
     }
 
-    private static void requireObject(JsonNode body) {
+    /**
+     * A copy of the body, once it is known to be a JSON object.
+     *
+     * <p>Returning the narrowed type means the caller cannot forget the check, and
+     * copying means the request Jackson handed us is never mutated on its way through.</p>
+     */
+    private static ObjectNode requireObject(JsonNode body) {
         if (body == null || !body.isObject()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "progress must be a JSON object");
         }
+        return (ObjectNode) body.deepCopy();
     }
 
     /**
