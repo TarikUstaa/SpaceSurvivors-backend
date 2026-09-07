@@ -45,11 +45,43 @@ class DeviceAuthFilterTest {
     }
 
     @Test
-    void fallsBackWhenNoDeviceIdIsSent() throws Exception {
+    @DisplayName("no device id is refused rather than sharing an anonymous profile")
+    void rejectsARequestWithNoDeviceId() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setRemoteAddr("127.0.0.1");
+        MockHttpServletResponse response = new MockHttpServletResponse();
 
-        assertThat(callerFor(request, false).deviceId()).isEqualTo("dev-unknown");
+        new DeviceAuthFilter(false).doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(response.getContentAsString()).contains("X-Device-Id");
+        assertThat(request.getAttribute(Caller.ATTR)).isNull();
+        Mockito.verify(chain, Mockito.never()).doFilter(Mockito.any(), Mockito.any());
+    }
+
+    @Test
+    void rejectsABlankDeviceId() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr("127.0.0.1");
+        request.addHeader("X-Device-Id", "   ");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        new DeviceAuthFilter(false).doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(401);
+    }
+
+    @Test
+    @DisplayName("health probes still answer without one")
+    void letsProbesThrough() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/health");
+        request.setRemoteAddr("127.0.0.1");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        new DeviceAuthFilter(false).doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        Mockito.verify(chain).doFilter(Mockito.any(), Mockito.any());
     }
 
     @Test

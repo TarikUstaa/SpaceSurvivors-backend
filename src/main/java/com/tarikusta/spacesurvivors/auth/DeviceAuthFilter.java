@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.regex.Pattern;
@@ -35,9 +36,6 @@ public class DeviceAuthFilter extends OncePerRequestFilter {
     private static final String DEVICE_HEADER = "X-Device-Id";
     private static final String FORWARDED_HEADER = "X-Forwarded-For";
 
-    /** Used when the client sends no device id, so local curl/Postman calls still work. */
-    private static final String FALLBACK_DEVICE = "dev-unknown";
-
     /** Long enough for any id we generate; short enough that a hostile header is capped. */
     private static final int MAX_DEVICE_ID_LENGTH = 64;
 
@@ -61,23 +59,59 @@ public class DeviceAuthFilter extends OncePerRequestFilter {
         this.trustForwardedFor = trustForwardedFor;
     }
 
+    /** Probes must answer even to a caller that has no identity at all. */
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return path.equals("/health") || path.startsWith("/actuator");
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
-        request.setAttribute(Caller.ATTR, new Caller(deviceId(request), clientIp(request)));
+        String deviceId = deviceId(request);
+        if (deviceId == null) {
+            reject(response);
+            return;
+        }
+        request.setAttribute(Caller.ATTR, new Caller(deviceId, clientIp(request)));
         chain.doFilter(request, response);
     }
 
+    /**
+     * The caller's device id, or null if they sent none.
+     *
+     * <p>There is deliberately no fallback. A shared "unknown" identity would mean every
+     * client that forgot the header became the same player — reading and overwriting one
+     * another's save — and, worse, it would hide the mistake: a client that stopped
+     * sending the header would keep working until someone noticed everybody shared a
+     * profile. Refusing turns that into an immediate, obvious failure.</p>
+     */
     private static String deviceId(HttpServletRequest request) {
         String header = request.getHeader(DEVICE_HEADER);
         if (header == null || header.isBlank()) {
-            return FALLBACK_DEVICE;
+            return null;
         }
         String trimmed = header.trim();
         return trimmed.length() <= MAX_DEVICE_ID_LENGTH
                 ? trimmed
                 : trimmed.substring(0, MAX_DEVICE_ID_LENGTH);
+    }
+
+    /**
+     * Answer directly rather than throwing: a filter runs before the DispatcherServlet,
+     * so {@code @RestControllerAdvice} never sees anything raised here. The body is shaped
+     * like the ProblemDetail responses the rest of the API returns, so clients need only
+     * one error shape.
+     */
+    private static void reject(HttpServletResponse response) throws IOException {
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType("application/problem+json");
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.getWriter().write("""
+                {"type":"about:blank","title":"Unauthorized","status":401,\
+                "detail":"%s header is required"}""".formatted(DEVICE_HEADER));
     }
 
     /**
