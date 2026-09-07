@@ -35,6 +35,75 @@ That repo was deleted. Current repo starts at `29c80e5`.
 
 ## Decisions
 
+*Newest first. Superseded entries are kept — the reasoning is the record.*
+
+### D9 — player_profile + player_progress, replacing users + players (2026-09-07)
+
+Tarik's call: `users` and `players` were 1:1 on the same key, which bought nothing.
+Merged and renamed:
+
+- `player_profile` — identity: `player_id uuid` PK, `device_id` UNIQUE, `display_name`,
+  `country`, `last_ip`, `first_login_date`, `updated_at`.
+- `player_progress` — the save: `player_id` PK, `progress_data jsonb`, `version`, `updated_at`.
+- `leaderboard_entries` — unchanged apart from keying on `player_id`.
+
+**player_id is deliberately not device_id.** The device id is *how we recognise* a player
+and can change (reinstall, new phone); the player id is *who they are* and never changes.
+Keeping them apart is what will later let real auth attach several devices to one player
+without touching a single row of progress. Costs nothing now, is very expensive to retrofit.
+
+uuid rather than a sequence so the row count is not public.
+
+`device_id` was deliberately NOT duplicated onto `player_progress`: a second copy can drift
+from the first, and `player_id` already joins the two.
+
+**Schema rebuilt in place rather than migrated.** V1 was days old, the data was throwaway,
+and a "V1 creates users/players, V2 immediately drops them" history would be noise. Tables
+dropped, V1 rewritten, Flyway rebuilt from the file. In a shipped system this would have
+been a V2 — an applied migration is never edited.
+
+### D10 — display names are unique, case-insensitively
+
+`UNIQUE INDEX ON player_profile (lower(display_name))`. A plain UNIQUE would let `tarik`
+and `TARIK` coexist, which makes impersonation trivial.
+
+Uniqueness forced the generator to change: `User` + 4 digits gives only 10 000 names, so
+with a unique index it exhausts almost immediately. Now `User100000`..`User999999` — always
+six digits, 900k to draw from, random rather than sequential so it does not leak how many
+players exist. `PlayerService.create` retries on collision; if a device row appeared
+meanwhile, another request for the same device won the race and we adopt its player.
+
+Name rules (3-16 chars, `[A-Za-z0-9_]`) live in `PlayerService`, not as annotations on the
+request record, because the generated default has to satisfy them too. They are also a CHECK
+constraint, so no code path can write a name the rules forbid.
+
+### D11 — controllers hold no logic
+
+Tarik's review: nothing that belongs in a service may sit in a controller. `ScoreController`
+was already clean; `ProfileController` was not — it validated the body, built responses out
+of `Map.of`, and branched on the outcome inline.
+
+Now every endpoint is one delegating line, except `ProgressController.save`, which switches
+over a sealed `SaveOutcome` to pick 200 vs 409. That is HTTP mapping, not a rule, and the
+sealed type means the compiler rejects a forgotten case. Ad-hoc maps are gone: every response
+is a named record, so the shape is a checkable contract rather than a string key.
+
+`HealthController` used `JdbcClient` directly, which V1-era notes defended as "one query, three
+classes would be silly". The rule is stated plainly now, so consistency wins: `HealthService`
+owns the check and also swallows a DB failure into `"db":"DOWN"` — a health endpoint must
+answer, not throw.
+
+### D12 — append-only run history deliberately deferred
+
+An append-only `player_run` table (one row per finished run) was proposed and declined for
+now. It is the one thing here that cannot be added retroactively: `player_progress` is
+overwritten on every save and `leaderboard_entries` keeps only the best, so every run played
+before that table exists is gone.
+
+**Cost of the delay:** a Stats screen, a "last 20 runs" view, run-distribution anti-cheat and
+any analytics will all start from the day the table lands, with no history behind them.
+Accepted knowingly.
+
 ### D1 — Profile stored as one `jsonb` blob, not normalised columns
 
 `players.profile` holds the entire client `PlayerProfile` as a single JSON object.
@@ -77,6 +146,8 @@ production practice but it is one concept too many while learning the basics.
 
 ### D4 — Optimistic locking on `players.version`, not database locks
 
+> *Still true; the column is now `player_progress.version` (D9).*
+
 Client sends the version it last read; `UPDATE ... WHERE version = :v`. Zero rows
 changed means someone else wrote first → 409 with the server's current profile.
 
@@ -89,6 +160,8 @@ from a mobile client — unacceptable.
 and retry. Not written yet — belongs to the Unity phase.
 
 ### D5 — Dev auth via `X-Dev-User` header, real auth deferred
+
+> *Header is now `X-Device-Id` and the filter is `DeviceAuthFilter` (D9). Everything below still holds.*
 
 `DevAuthFilter` reads the header and puts `userId` on the request. Controllers read it
 with `@RequestAttribute`, so they do not know where it came from.
@@ -103,6 +176,8 @@ one class. This is the whole point of the indirection.
 build beyond localhost.
 
 ### D6 — Leaderboard keeps one row per (user, mode)
+
+> *Now keyed on `player_id` (D9). See also D12 on the run history this rules out.*
 
 `leaderboard_entries` stores the personal best, not a run history. `POST /v1/scores`
 upserts only when the run beats the stored best.
@@ -127,6 +202,10 @@ protection needs a server-authoritative run, which is out of scope and probably 
 will be for this game.
 
 ### D8 — Display name will ride along in the profile, not its own endpoint
+
+> **Superseded by D9/D10.** `display_name` is a real column now and the player edits it
+> deliberately, so it got its own endpoint (`PATCH /v1/player`) rather than riding in the
+> save blob — the name should not depend on a run ending to take effect.
 
 Players cannot pick a nickname yet; `users.display_name` is generated as
 `Pilot-<first 6 of uid>`.
@@ -174,6 +253,7 @@ which happens at the end of every run.
 | — | `8f1c9f7` | this file |
 | F5a | game repo `18d0745` | **Unity client connected.** `HttpProfileStore` / `ProfileMerge` / `BackendConfig` / `BackendBootstrap` + an editor settings window, all behind the game's existing `IProfileStore` seam. Verified end to end against this backend: the real save (wallet 481) now round-trips through `players`. |
 | F5b | game repo `fa83b63` | **Leaderboard connected.** `HttpLeaderboardStore` posts finished runs to `/v1/scores`. Verified: upsert-if-better replaces the single row in place. `GET /v1/scores` still has no client — nothing in the game displays a board yet. |
+| F6 | (this change) | **Schema and layering rework** — see D9-D12. `users`+`players` became `player_profile`+`player_progress`; `player_id uuid` split from `device_id`; unique case-insensitive display names with `PATCH /v1/player`; `DevAuthFilter` became `DeviceAuthFilter` carrying a `Caller`; controllers reduced to delegation; `HealthService` added; endpoint renamed `/v1/profile` -> `/v1/progress`. DB dropped and rebuilt from the rewritten V1. Unity client updated (header, URL, wire field `profile` -> `progress`, full-GUID device id). 15 curl scenarios green. |
 
 **Verification approach:** every phase curl-tested end to end against local Postgres
 (F2: 6 scenarios, F3: 15), test rows purged afterwards, then walked through in Postman
@@ -183,7 +263,13 @@ by Tarik. Automated tests are still just the context-load smoke test — a gap, 
 
 ## Open / next
 
-1. **Postman collection** — the requests exist only as ad-hoc tabs. Worth saving as a
+1. **In-game profile screen** — nothing calls `PATCH /v1/player` yet, so every player keeps
+   their generated `UserNNNNNN`. The endpoint and its 400/409 answers are ready for it.
+2. **`country` has no source.** The column exists and stays NULL until a host or CDN supplies
+   a country header. Locally `last_ip` is always `::1`, so nothing can be derived from it.
+3. **IP is personal data.** Stored deliberately; it will need a purpose and a retention rule
+   (a "delete IPs older than N days" job) before this is public.
+4. **Postman collection** — the requests exist only as ad-hoc tabs. Worth saving as a
    collection with a `{{baseUrl}}` variable.
 2. **Unity integration** — `HttpProfileStore` / `HttpLeaderboardStore` against the
    existing `IProfileStore` / `ILeaderboardStore` seams in the game repo (commit

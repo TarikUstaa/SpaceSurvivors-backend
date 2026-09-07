@@ -1,6 +1,7 @@
 package com.tarikusta.spacesurvivors.score;
 
-import com.tarikusta.spacesurvivors.user.UserService;
+import com.tarikusta.spacesurvivors.auth.Caller;
+import com.tarikusta.spacesurvivors.player.PlayerService;
 import com.tarikusta.spacesurvivors.web.ApiException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -11,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * The rules of the leaderboard. No SQL, no HTTP.
@@ -41,42 +43,43 @@ public class ScoreService {
     private static final int MAX_BOARD_SIZE = 200;
 
     private final ScoreRepository scores;
-    private final UserService users;
+    private final PlayerService players;
 
-    public ScoreService(ScoreRepository scores, UserService users) {
+    public ScoreService(ScoreRepository scores, PlayerService players) {
         this.scores = scores;
-        this.users = users;
+        this.players = players;
     }
 
     /**
      * Record a finished run. The entry is only written when it beats the player's
      * stored best, so the table stays one row per player per mode.
      *
-     * <p>{@code @Transactional}: the users upsert, the read of the old best and the
+     * <p>{@code @Transactional}: resolving the player, reading the old best and the
      * write all commit together or not at all.
      */
     @Transactional
-    public ScoreDtos.SubmitResult submit(String userId, ScoreDtos.Submission run) {
+    public ScoreDtos.SubmitResult submit(Caller caller, ScoreDtos.Submission run) {
         String mode = normaliseMode(run.mode());
         rejectImplausible(run);
 
-        users.touch(userId);
+        UUID playerId = players.resolveOrCreate(caller);
 
-        double previousBest = scores.personalBest(userId, mode).orElse(-1.0);
+        double previousBest = scores.personalBest(playerId, mode).orElse(-1.0);
         boolean isNewRecord = run.survivedSeconds() > previousBest;
         if (isNewRecord) {
-            scores.saveBest(userId, mode, run.survivedSeconds(), run.kills(),
+            scores.saveBest(playerId, mode, run.survivedSeconds(), run.kills(),
                     run.reachedLevel(), run.bossesDefeated());
         }
 
         // read back rather than compute: this is what the board will actually show
-        return scores.findMe(userId, mode)
+        return scores.findMe(playerId, mode)
                 .map(me -> new ScoreDtos.SubmitResult(me.survivedSeconds(), isNewRecord, me.rank()))
                 .orElseGet(() -> new ScoreDtos.SubmitResult(run.survivedSeconds(), isNewRecord, null));
     }
 
     /** Top {@code limit} entries of a mode, plus where the caller sits. */
-    public ScoreDtos.Board board(String userId, String mode, int limit) {
+    @Transactional
+    public ScoreDtos.Board board(Caller caller, String mode, int limit) {
         String normalised = normaliseMode(mode);
         int capped = Math.clamp(limit, 1, MAX_BOARD_SIZE);
 
@@ -87,7 +90,7 @@ public class ScoreService {
                     row.survivedSeconds(), row.kills(), row.reachedLevel()));
         }
 
-        ScoreDtos.Me me = scores.findMe(userId, normalised).orElse(null);
+        ScoreDtos.Me me = scores.findMe(players.resolveOrCreate(caller), normalised).orElse(null);
         return new ScoreDtos.Board(normalised, entries, me);
     }
 

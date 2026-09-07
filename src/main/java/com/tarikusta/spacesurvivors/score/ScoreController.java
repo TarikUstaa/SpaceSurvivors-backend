@@ -1,5 +1,6 @@
 package com.tarikusta.spacesurvivors.score;
 
+import com.tarikusta.spacesurvivors.auth.Caller;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -10,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * HTTP layer for the leaderboard. As with the profile endpoints, {@code userId} is
+ * HTTP layer for the leaderboard. As with the progress endpoints, the {@link Caller} is
  * put on the request by the auth filter and read here with {@code @RequestAttribute}.
  *
  * <p>{@code @Valid} is what makes Spring run the constraints declared on
@@ -35,9 +36,9 @@ public class ScoreController {
      * </ul>
      */
     @PostMapping
-    public ScoreDtos.SubmitResult submit(@RequestAttribute("userId") String userId,
+    public ScoreDtos.SubmitResult submit(@RequestAttribute(Caller.ATTR) Caller caller,
                                          @Valid @RequestBody ScoreDtos.Submission run) {
-        return service.submit(userId, run);
+        return service.submit(caller, run);
     }
 
     /**
@@ -45,9 +46,9 @@ public class ScoreController {
      * own standing. {@code limit} is optional and clamped server-side.
      */
     @GetMapping
-    public ScoreDtos.Board board(@RequestAttribute("userId") String userId,
+    public ScoreDtos.Board board(@RequestAttribute(Caller.ATTR) Caller caller,
                                  @RequestParam String mode,
                                  @RequestParam(defaultValue = "100") int limit) {
-        return service.board(userId, mode, limit);
+        return service.board(caller, mode, limit);
     }
 }
