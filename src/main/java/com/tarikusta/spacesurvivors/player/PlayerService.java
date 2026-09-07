@@ -1,6 +1,8 @@
 package com.tarikusta.spacesurvivors.player;
 
 import com.tarikusta.spacesurvivors.auth.Caller;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.tarikusta.spacesurvivors.domain.AlreadyTakenException;
 import com.tarikusta.spacesurvivors.domain.InvalidInputException;
 import com.tarikusta.spacesurvivors.domain.NotFoundException;
@@ -30,6 +32,8 @@ public class PlayerService {
 
     private static final int NAME_MIN = 3;
     private static final int NAME_MAX = 16;
+
+    private static final Logger log = LoggerFactory.getLogger(PlayerService.class);
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -109,6 +113,9 @@ public class PlayerService {
         } catch (DataIntegrityViolationException e) {
             throw new AlreadyTakenException("name already taken");
         }
+        // Names are public and unique, so a rename is the one profile change anybody may
+        // later need to trace — a report about an offensive name starts here.
+        log.info("player {} renamed", playerId);
     }
 
     private Player require(UUID playerId) {
@@ -139,6 +146,9 @@ public class PlayerService {
             // the generated name was taken, so try a different one.
             Optional<PlayerProfile> profile = players.findByDeviceId(caller.deviceId());
             if (profile.isPresent()) {
+                // Once per player for the lifetime of the account, so it is worth INFO:
+                // it is the only record of when and how the population grew.
+                log.info("player created for a new device, attempt {}", attempt + 1);
                 return profile.get().getPlayerId();
             }
         }

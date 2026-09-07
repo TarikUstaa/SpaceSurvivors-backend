@@ -106,9 +106,4 @@ public class PlayerProgress {
     public int getVersion() {
         return version;
     }
-
-    /** Only for a caller asserting which version it believes it is updating. */
-    public void setVersion(int version) {
-        this.version = version;
-    }
 }

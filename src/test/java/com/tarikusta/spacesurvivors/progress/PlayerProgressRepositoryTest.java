@@ -95,18 +95,21 @@ class PlayerProgressRepositoryTest {
         progress.saveAndFlush(new PlayerProgress(playerId, SAVE));
         entityManager.clear();
 
+        // Loaded, so it remembers the version it saw.
         PlayerProgress mine = progress.findById(playerId).orElseThrow();
 
         // Somebody else writes first, straight past the persistence context.
         db.sql("UPDATE player_progress SET version = version + 1 WHERE player_id = :id")
                 .param("id", playerId).update();
-        entityManager.clear();
 
-        PlayerProgress stale = new PlayerProgress(playerId, """
+        // Our copy still believes the old version, so the UPDATE Hibernate emits matches
+        // no row. Constructing a stale entity by hand would need a version setter that
+        // production has no use for; letting the row move underneath a loaded one is both
+        // closer to what actually happens and honest about the entity's API.
+        mine.setProgressData("""
                 {"wallet":999}""");
-        stale.setVersion(mine.getVersion());
 
-        assertThatThrownBy(() -> progress.saveAndFlush(stale))
+        assertThatThrownBy(() -> progress.saveAndFlush(mine))
                 .isInstanceOf(ObjectOptimisticLockingFailureException.class);
     }
 

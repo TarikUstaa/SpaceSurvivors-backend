@@ -66,11 +66,25 @@ public class DeviceAuthFilter extends OncePerRequestFilter {
         this.trustForwardedFor = trustForwardedFor;
     }
 
-    /** Probes must answer even to a caller that has no identity at all. */
+    /**
+     * Paths that answer without an identity.
+     *
+     * <p>A health probe has no credential to offer, and the API description has to be
+     * readable before anyone can know what credential to send — requiring one to fetch the
+     * document that explains it is a circle. Both are deliberately public.</p>
+     *
+     * <p>The description says nothing secret: it lists the same endpoints any client
+     * already knows. If a deployment would rather not publish it, the answer is to switch
+     * springdoc off there ({@code springdoc.api-docs.enabled=false}) rather than to hide it
+     * behind a credential it is meant to explain.</p>
+     */
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return path.equals("/health") || path.startsWith("/actuator");
+        return path.equals("/health")
+                || path.startsWith("/actuator")
+                || path.startsWith("/v3/api-docs")
+                || path.startsWith("/swagger-ui");
     }
 
     @Override

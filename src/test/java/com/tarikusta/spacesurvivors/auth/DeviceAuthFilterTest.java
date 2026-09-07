@@ -94,10 +94,13 @@ class DeviceAuthFilterTest {
         assertThat(response.getStatus()).isEqualTo(401);
     }
 
-    @Test
-    @DisplayName("health probes still answer without one")
-    void letsProbesThrough() throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/health");
+    @ParameterizedTest
+    @DisplayName("probes and the API description answer without a credential")
+    @ValueSource(strings = { "/health", "/actuator/info", "/v3/api-docs", "/swagger-ui/index.html" })
+    void letsPublicPathsThrough(String path) throws Exception {
+        // The documentation especially: requiring a credential to read the document that
+        // explains which credential to send is a circle nobody can enter.
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", path);
         request.setRemoteAddr("127.0.0.1");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -105,6 +108,18 @@ class DeviceAuthFilterTest {
 
         assertThat(response.getStatus()).isEqualTo(200);
         Mockito.verify(chain).doFilter(Mockito.any(), Mockito.any());
+    }
+
+    @Test
+    @DisplayName("a real endpoint is still protected")
+    void doesNotLetEndpointsThrough() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/v1/player");
+        request.setRemoteAddr("127.0.0.1");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        new DeviceAuthFilter(false).doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(401);
     }
 
     @Test

@@ -1,6 +1,8 @@
 package com.tarikusta.spacesurvivors.leaderboard;
 
 import com.tarikusta.spacesurvivors.auth.Caller;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.tarikusta.spacesurvivors.player.PlayerService;
 import com.tarikusta.spacesurvivors.domain.RuleViolationException;
 import org.springframework.stereotype.Service;
@@ -29,6 +31,8 @@ import org.springframework.data.domain.PageRequest;
  */
 @Service
 public class LeaderboardService {
+
+    private static final Logger log = LoggerFactory.getLogger(LeaderboardService.class);
 
     /** The game's two modes. Anything else is a client bug or someone poking the API. */
     private static final Set<String> MODES = Set.of("infinite", "campaign");
@@ -123,6 +127,10 @@ public class LeaderboardService {
     private void rejectImplausible(LeaderboardDtos.Submission run) {
         if (run.survivedSeconds() >= MIN_SECONDS_TO_JUDGE_RATE
                 && run.kills() / run.survivedSeconds() > MAX_KILLS_PER_SECOND) {
+            // WARN, not INFO: a legitimate client cannot produce this, so every one is
+            // either a tampered client or a balance change nobody told the server about.
+            log.warn("implausible run rejected: {} kills in {}s, mode {}",
+                    run.kills(), run.survivedSeconds(), run.mode());
             throw new RuleViolationException("kill rate is not achievable in that time");
         }
     }
