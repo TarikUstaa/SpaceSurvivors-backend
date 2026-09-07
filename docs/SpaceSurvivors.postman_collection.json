@@ -1,0 +1,765 @@
+{
+  "info": {
+    "name": "SpaceSurvivors backend",
+    "description": "Oyunun gercek akisi, sirayla. Uzerine hata senaryolari.\n\nKimlik `Authorization: Device <device-id>` ile gidiyor \u2014 parametre degil kimlik bilgisi oldugu icin header'da: her uc noktada ayni, ve query string erisim loglarina/tarayici gecmisine sizar. Firebase gelince sema `Bearer` olacak, baska hicbir sey degismeyecek.\n\n`deviceA` / `deviceB` degiskenleri iki farkli oyuncuyu temsil ediyor. Gercek oyunda bu degeri Unity ilk acilista bir kez uretip cihaza kaydediyor.\n\nSunucu: IntelliJ'de SpacesurvivorsApplication -> Run.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "deviceA",
+      "value": "postman-a"
+    },
+    {
+      "key": "deviceB",
+      "value": "postman-b"
+    }
+  ],
+  "item": [
+    {
+      "name": "0 - Saglik",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Sunucu ayakta mi ve veritabanina ulasabiliyor mu. Kimlik istemiyor: bir saglik kontrolu, kimligi olmayan cagirana da cevap vermeli.\n\nBeklenen: 200 {\"status\":\"UP\",\"db\":\"UP\"}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "1 - Ilk acilis",
+      "item": [
+        {
+          "name": "GET /v1/player  (ilk temas)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/player",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "player"
+              ]
+            },
+            "description": "Bu cihaz ilk kez goruluyor: sunucu player_profile satirini yaratiyor, player_id'yi Postgres uretiyor, adi rastgele veriyor.\n\nplayer_id cevapta YOK \u2014 kimlikler disari acilmiyor.\n\nBeklenen: 200 {\"displayName\":\"User<6 hane>\",\"country\":null}"
+          }
+        },
+        {
+          "name": "GET /v1/player  (ayni cihaz tekrar)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/player",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "player"
+              ]
+            },
+            "description": "Ayni istek. Yeni satir YARATILMAMALI \u2014 ayni displayName donmesi bunun kaniti.\n\nBeklenen: 200, ilk istekle ayni ad"
+          }
+        },
+        {
+          "name": "GET /v1/progress  (kayit yok)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/progress",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "progress"
+              ]
+            },
+            "description": "Profil var ama ilerleme kaydi yok. 404, 'bos profil'den farkli bir sey soyluyor: istemci bunu gorunce kendi local kaydini yukluyor.\n\nBeklenen: 404 {\"detail\":\"no progress stored yet\"}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 - Bulut kayit",
+      "item": [
+        {
+          "name": "PUT /v1/progress  (ilk kayit)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/progress",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "progress"
+              ]
+            },
+            "description": "version:0 = 'elimde sunucudan gelmis bir surum yok, bu ilk yuklemem'.\n\nBeklenen: 200 {\"version\":1}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"progress\": {\n    \"schemaVersion\": 5,\n    \"wallet\": 100,\n    \"ownedShipIds\": [\n      \"scout\"\n    ]\n  },\n  \"version\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /v1/progress  (geri oku)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/progress",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "progress"
+              ]
+            },
+            "description": "Dikkat: cevapta userId var ama sen gondermedin. Sunucu kendi player_id'sini basiyor. Body'ye \"userId\":\"hacker\" yazip yollasan bile uzerine yazar.\n\nBeklenen: 200, progress.userId = sunucunun uuid'si, version 1"
+          }
+        },
+        {
+          "name": "PUT /v1/progress  (eski surum -> catisma)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/progress",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "progress"
+              ]
+            },
+            "description": "version:0 yolluyoruz ama sunucu 1'de. Optimistic locking devrede: UPDATE ... WHERE version = 0 hicbir satira uymuyor, 0 satir etkileniyor.\n\nSunucu koru korune ezmek yerine kendi kopyasini geri veriyor. wallet:999 YAZILMADI. Bu olmasaydi: telefonda kazandigin scrap, tablette eski profil kaydedilince ucardi.\n\nBeklenen: 409 {\"serverVersion\":1,\"progress\":{...}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"progress\": {\n    \"wallet\": 999\n  },\n  \"version\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PUT /v1/progress  (dogru surum)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/progress",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "progress"
+              ]
+            },
+            "description": "Artik elindeki surum dogru. Yazildi, surum 2 oldu.\n\nBeklenen: 200 {\"version\":2}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"progress\": {\n    \"schemaVersion\": 5,\n    \"wallet\": 250\n  },\n  \"version\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 - Isim secme",
+      "item": [
+        {
+          "name": "PATCH /v1/player  (isim sec)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/player",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "player"
+              ]
+            },
+            "description": "Oyun ici profil ekrani bunu cagiracak. player_id degismiyor, sadece ad.\n\nBeklenen: 200 {\"displayName\":\"Tarik\"}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"Tarik\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PATCH /v1/player  (ayni isim, ikinci oyuncu)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceB}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/player",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "player"
+              ]
+            },
+            "description": "Isimler BUYUK/KUCUK HARF DUYARSIZ benzersiz: lower(display_name) uzerinde unique index var. Duz UNIQUE olsaydi 'tarik' ve 'TARIK' yan yana var olurdu ve birini taklit etmek cok kolay olurdu.\n\nBeklenen: 409 {\"detail\":\"name already taken\"}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"TARIK\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PATCH /v1/player  (gecerli isim)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceB}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/player",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "player"
+              ]
+            },
+            "description": "Beklenen: 200",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"Kaptan_42\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 - Leaderboard",
+      "item": [
+        {
+          "name": "POST /v1/leaderboard  (skor gonder)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/leaderboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "leaderboard"
+              ]
+            },
+            "description": "Run bitiminde oyun bunu gonderiyor. Sunucu yalnizca rekoru gecerse yaziyor.\n\nBeklenen: 200 {\"personalBest\":300,\"isNewRecord\":true,\"rank\":?}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"infinite\",\n  \"survivedSeconds\": 300,\n  \"kills\": 420,\n  \"reachedLevel\": 18,\n  \"bossesDefeated\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /v1/leaderboard  (ikinci oyuncu, daha iyi)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceB}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/leaderboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "leaderboard"
+              ]
+            },
+            "description": "Beklenen: 200, rank 1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"infinite\",\n  \"survivedSeconds\": 600,\n  \"kills\": 900,\n  \"reachedLevel\": 30,\n  \"bossesDefeated\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /v1/leaderboard  (daha kotu run)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/leaderboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "leaderboard"
+              ]
+            },
+            "description": "200 donuyor ama HICBIR SEY YAZILMIYOR. 200 'istegini isledim' demek, 'veriyi degistirdim' demek degil. Gercek cevap isNewRecord:false.\n\nTablo run gecmisi degil, oyuncu basina EN IYI \u2014 tek satir.\n\nBeklenen: 200 {\"isNewRecord\":false,\"personalBest\":300}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"infinite\",\n  \"survivedSeconds\": 250,\n  \"kills\": 300,\n  \"reachedLevel\": 15,\n  \"bossesDefeated\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /v1/leaderboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/leaderboard?mode=infinite&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "leaderboard"
+              ],
+              "query": [
+                {
+                  "key": "mode",
+                  "value": "infinite"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Filtre URL'de, cunku GET'in govdesi olmaz. Listede user_id/player_id YOK \u2014 sadece displayName; kimlikler disari sizmiyor.\n\nBeklenen: 200, siralama + kendi durumun (me)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 - Hata senaryolari",
+      "item": [
+        {
+          "name": "401 - kimlik yok",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/player",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "player"
+              ]
+            },
+            "description": "Header yoksa istek reddediliyor. Eskiden paylasilan bir 'dev-unknown' hesabina dusuyordu: header'i unutan herkes ayni oyuncu oluyor, ayni profili ezebiliyordu. Daha kotusu, istemci hatasini gizliyordu.\n\nBeklenen: 401 {\"detail\":\"Authorization: Device <device-id> header is required\"}"
+          }
+        },
+        {
+          "name": "400 - isim cok kisa",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/player",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "player"
+              ]
+            },
+            "description": "Kural: 3-16 karakter. Kural PlayerService'te, anotasyonda degil \u2014 cunku sunucunun urettigi varsayilan adin da ayni kurali saglamasi gerekiyor.\n\nBeklenen: 400",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"ab\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "400 - isimde bosluk",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/player",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "player"
+              ]
+            },
+            "description": "Sadece harf/rakam/alt cizgi. Bosluk ve gorunmez karakterler taklit icin kullanilir, leaderboard hizalamasini da bozar.\n\nBeklenen: 400",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"Tarik Usta\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "400 - negatif alan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/leaderboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "leaderboard"
+              ]
+            },
+            "description": "Alan bicimi hatasi. Anotasyonlar yakaliyor, kod servise hic girmiyor. Cevap hangi alanlarin bozuk oldugunu soyluyor.\n\nBeklenen: 400 + fields.kills, fields.reachedLevel",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"infinite\",\n  \"survivedSeconds\": 100,\n  \"kills\": -5,\n  \"reachedLevel\": 0,\n  \"bossesDefeated\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "422 - hile",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/leaderboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "leaderboard"
+              ]
+            },
+            "description": "400 ile 422 farki: JSON kusursuz, her alan dogru tipte ve pozitif. Sunucu istegi ANLADI. Sadece '10 saniyede 50.000 kill bu oyunda olmaz' diyor.\n\n400 = anlayamadim. 422 = anladim ama olmaz.\n\nBeklenen: 422 {\"detail\":\"kill rate is not achievable in that time\"}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"infinite\",\n  \"survivedSeconds\": 10,\n  \"kills\": 50000,\n  \"reachedLevel\": 1,\n  \"bossesDefeated\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "422 - bilinmeyen mod",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/leaderboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "leaderboard"
+              ]
+            },
+            "description": "Beklenen: 422",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"sandbox\",\n  \"survivedSeconds\": 10,\n  \"kills\": 1,\n  \"reachedLevel\": 1,\n  \"bossesDefeated\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "413 - profil cok buyuk",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Device {{deviceA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/progress",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "progress"
+              ]
+            },
+            "description": "64 KB siniri. Gercek bir profil birkac yuz bayt.\n\nBeklenen: 413",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"progress\": { \"junk\": \"{{bigBlob}}\" },\n  \"version\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 70 KB of filler, built here so the collection file stays small.",
+                  "pm.variables.set('bigBlob', 'x'.repeat(70000));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

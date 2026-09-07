@@ -30,7 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(ApiExceptionHandler.class)
 class ProgressControllerTest {
 
-    private static final String DEVICE = "X-Device-Id";
+    private static final String DEVICE = "Authorization";
     private static final String BODY = """
             {"progress":{"wallet":100},"version":1}""";
 
@@ -49,7 +49,7 @@ class ProgressControllerTest {
                 new ProgressDtos.ProgressView(json.readTree("""
                         {"wallet":100}"""), 3));
 
-        mvc.perform(get("/v1/progress").header(DEVICE, "dev-a"))
+        mvc.perform(get("/v1/progress").header(DEVICE, "Device dev-a"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.version").value(3))
                 .andExpect(jsonPath("$.progress.wallet").value(100));
@@ -59,7 +59,7 @@ class ProgressControllerTest {
     void loadIs404WhenNothingIsStored() throws Exception {
         when(progress.load(any(Caller.class))).thenThrow(new NotFoundException("no progress stored yet"));
 
-        mvc.perform(get("/v1/progress").header(DEVICE, "dev-a"))
+        mvc.perform(get("/v1/progress").header(DEVICE, "Device dev-a"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.detail").value("no progress stored yet"));
     }
@@ -68,7 +68,7 @@ class ProgressControllerTest {
     void saveIs200WithTheNewVersion() throws Exception {
         when(progress.save(any(Caller.class), any())).thenReturn(new ProgressService.SaveOutcome.Accepted(4));
 
-        mvc.perform(put("/v1/progress").header(DEVICE, "dev-a")
+        mvc.perform(put("/v1/progress").header(DEVICE, "Device dev-a")
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.version").value(4));
@@ -80,7 +80,7 @@ class ProgressControllerTest {
                 new ProgressService.SaveOutcome.Conflict(7, json.readTree("""
                         {"wallet":999}""")));
 
-        mvc.perform(put("/v1/progress").header(DEVICE, "dev-a")
+        mvc.perform(put("/v1/progress").header(DEVICE, "Device dev-a")
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.serverVersion").value(7))
@@ -91,14 +91,14 @@ class ProgressControllerTest {
     void saveIs413WhenTheBlobIsTooBig() throws Exception {
         when(progress.save(any(Caller.class), any())).thenThrow(new TooLargeException("progress exceeds 64 KB"));
 
-        mvc.perform(put("/v1/progress").header(DEVICE, "dev-a")
+        mvc.perform(put("/v1/progress").header(DEVICE, "Device dev-a")
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isPayloadTooLarge());
     }
 
     @Test
     void saveIs400AndNamesTheFieldWhenTheVersionIsNegative() throws Exception {
-        mvc.perform(put("/v1/progress").header(DEVICE, "dev-a")
+        mvc.perform(put("/v1/progress").header(DEVICE, "Device dev-a")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"progress":{"wallet":1},"version":-1}"""))

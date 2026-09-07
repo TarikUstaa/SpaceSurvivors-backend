@@ -33,7 +33,14 @@ import java.util.regex.Pattern;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class DeviceAuthFilter extends OncePerRequestFilter {
 
-    private static final String DEVICE_HEADER = "X-Device-Id";
+    private static final String AUTH_HEADER = "Authorization";
+
+    /**
+     * The scheme this filter understands. It names what the credential is rather than
+     * what it proves, because right now it proves nothing — see the class javadoc.
+     * Firebase turns this into {@code Bearer} and changes nothing else.
+     */
+    private static final String DEVICE_SCHEME = "Device ";
     private static final String FORWARDED_HEADER = "X-Forwarded-For";
 
     /** Long enough for any id we generate; short enough that a hostile header is capped. */
@@ -89,14 +96,17 @@ public class DeviceAuthFilter extends OncePerRequestFilter {
      * profile. Refusing turns that into an immediate, obvious failure.</p>
      */
     private static String deviceId(HttpServletRequest request) {
-        String header = request.getHeader(DEVICE_HEADER);
-        if (header == null || header.isBlank()) {
+        String header = request.getHeader(AUTH_HEADER);
+        if (header == null || !header.regionMatches(true, 0, DEVICE_SCHEME, 0, DEVICE_SCHEME.length())) {
             return null;
         }
-        String trimmed = header.trim();
-        return trimmed.length() <= MAX_DEVICE_ID_LENGTH
-                ? trimmed
-                : trimmed.substring(0, MAX_DEVICE_ID_LENGTH);
+        String value = header.substring(DEVICE_SCHEME.length()).trim();
+        if (value.isEmpty()) {
+            return null;
+        }
+        return value.length() <= MAX_DEVICE_ID_LENGTH
+                ? value
+                : value.substring(0, MAX_DEVICE_ID_LENGTH);
     }
 
     /**
@@ -111,7 +121,7 @@ public class DeviceAuthFilter extends OncePerRequestFilter {
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.getWriter().write("""
                 {"type":"about:blank","title":"Unauthorized","status":401,\
-                "detail":"%s header is required"}""".formatted(DEVICE_HEADER));
+                "detail":"Authorization: Device <device-id> header is required"}""");
     }
 
     /**

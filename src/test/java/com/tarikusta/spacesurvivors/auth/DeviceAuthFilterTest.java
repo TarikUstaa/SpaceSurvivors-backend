@@ -28,7 +28,7 @@ class DeviceAuthFilterTest {
     private static MockHttpServletRequest request(String forwardedFor) {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setRemoteAddr("127.0.0.1");
-        request.addHeader("X-Device-Id", "dev-abc");
+        request.addHeader("Authorization", "Device dev-abc");
         if (forwardedFor != null) {
             request.addHeader("X-Forwarded-For", forwardedFor);
         }
@@ -54,16 +54,39 @@ class DeviceAuthFilterTest {
         new DeviceAuthFilter(false).doFilter(request, response, chain);
 
         assertThat(response.getStatus()).isEqualTo(401);
-        assertThat(response.getContentAsString()).contains("X-Device-Id");
+        assertThat(response.getContentAsString()).contains("Authorization");
         assertThat(request.getAttribute(Caller.ATTR)).isNull();
         Mockito.verify(chain, Mockito.never()).doFilter(Mockito.any(), Mockito.any());
+    }
+
+    @Test
+    @DisplayName("a header with the wrong scheme is refused")
+    void rejectsAnUnknownScheme() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr("127.0.0.1");
+        request.addHeader("Authorization", "Bearer some.jwt.token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        new DeviceAuthFilter(false).doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(401);
+    }
+
+    @Test
+    @DisplayName("the scheme is matched case-insensitively, as RFC 7235 requires")
+    void acceptsAnyCasingOfTheScheme() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr("127.0.0.1");
+        request.addHeader("Authorization", "device dev-abc");
+
+        assertThat(callerFor(request, false).deviceId()).isEqualTo("dev-abc");
     }
 
     @Test
     void rejectsABlankDeviceId() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setRemoteAddr("127.0.0.1");
-        request.addHeader("X-Device-Id", "   ");
+        request.addHeader("Authorization", "Device    ");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         new DeviceAuthFilter(false).doFilter(request, response, chain);
@@ -88,7 +111,7 @@ class DeviceAuthFilterTest {
     void capsAnOverlongDeviceId() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setRemoteAddr("127.0.0.1");
-        request.addHeader("X-Device-Id", "x".repeat(500));
+        request.addHeader("Authorization", "Device " + "x".repeat(500));
 
         assertThat(callerFor(request, false).deviceId()).hasSize(64);
     }
@@ -118,7 +141,7 @@ class DeviceAuthFilterTest {
     void yieldsNullWhenNothingIsKnown() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setRemoteAddr("unknown");
-        request.addHeader("X-Device-Id", "dev-abc");
+        request.addHeader("Authorization", "Device dev-abc");
 
         assertThat(callerFor(request, false).ip()).isNull();
     }
