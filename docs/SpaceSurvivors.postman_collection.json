@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "SpaceSurvivors backend",
-    "description": "Oyunun gercek akisi, sirayla. Uzerine hata senaryolari.\n\nONCE '1 - Giris' klasorundeki POST /v1/auth/token'i calistir: cihaz kimligi + sirri verip bir token aliyorsun, ve test script'i onu {{token}} degiskenine yaziyor. Diger butun istekler `Authorization: Bearer {{token}}` gonderiyor.\n\nNeden boyle: cihaz sirri sadece bu tek uc noktaya gidiyor, sunucu onun yalnizca BCrypt hash'ini sakliyor, ve token bir saat sonra kendiliginden gecersiz oluyor. Eskiden cihaz kimliginin kendisi her istekte gidiyordu ve hicbir zaman sona ermiyordu.\n\nSunucu: IntelliJ'de SpacesurvivorsApplication -> Run.",
+    "description": "Kaynak basina klasorler. **Run collection** ile hepsini bir kerede calistir \u2014 her istegin dogrulama script'i var, sonunda gecen/kalan raporu cikar.\n\n**Sira onemli:** Health degiskenleri uretiyor, Auth token'lari dolduruyor, Progress kendi icinde 404 -> kayit -> catisma sirasini izliyor.\n\nHer calistirmada benzersiz cihaz kimligi, sir ve isim uretiliyor, o yuzden art arda calistirilabilir.\n\nKimlik: cihaz sirri sadece POST /v1/auth/token'a gidiyor, karsiliginda 1 saatlik token aliniyor, diger her istek `Authorization: Bearer` tasiyor. Iki oyuncu: {{tokenA}}, {{tokenB}}.\n\nSunucu: IntelliJ'de SpacesurvivorsApplication -> Run.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -10,29 +10,46 @@
       "value": "http://localhost:8080"
     },
     {
+      "key": "runId",
+      "value": ""
+    },
+    {
       "key": "deviceA",
-      "value": "postman-device-a"
+      "value": ""
     },
     {
       "key": "deviceB",
-      "value": "postman-device-b"
+      "value": ""
     },
     {
       "key": "secretA",
-      "value": "postman-secret-a-long-enough-to-pass-32"
+      "value": ""
     },
     {
       "key": "secretB",
-      "value": "postman-secret-b-long-enough-to-pass-32"
+      "value": ""
     },
     {
-      "key": "token",
+      "key": "tokenA",
+      "value": ""
+    },
+    {
+      "key": "tokenB",
+      "value": ""
+    },
+    {
+      "key": "name1",
+      "value": ""
+    },
+    {
+      "key": "firstName",
       "value": ""
     }
   ],
   "item": [
     {
-      "name": "0 - Saglik",
+      "name": "0 - Health",
+      "description": "Kimlik istemeyen tek is uc noktasi. Bir saglik kontrolu, kimligi olmayan cagirana da cevap vermeli.",
       "item": [
         {
           "name": "GET /health",
@@ -48,30 +65,47 @@
                 "health"
               ]
             },
-            "description": "Sunucu ayakta mi ve veritabanina ulasabiliyor mu. Kimlik istemiyor: bir saglik kontrolu, kimligi olmayan cagirana da cevap vermeli.\n\nBeklenen: 200 {\"status\":\"UP\",\"db\":\"UP\"}"
-          }
+            "description": "Sunucu ayakta mi ve veritabanina ulasabiliyor mu.\n\nBu istegin pre-request script'i tum kosum degiskenlerini uretiyor \u2014 koleksiyonu bastan calistirdiginda ilk sirada olmasi bu yuzden onemli."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Fresh identities for every run, so the collection can be re-run without tripping",
+                  "// over rows a previous run left behind. Display names are unique server-side, so",
+                  "// they need a run id too.",
+                  "const run = Date.now().toString(36);",
+                  "pm.collectionVariables.set('runId', run);",
+                  "pm.collectionVariables.set('deviceA', 'postman-a-' + run);",
+                  "pm.collectionVariables.set('deviceB', 'postman-b-' + run);",
+                  "pm.collectionVariables.set('secretA', 'secret-a-' + run + '-padded-to-thirty-two-chars');",
+                  "pm.collectionVariables.set('secretB', 'secret-b-' + run + '-padded-to-thirty-two-chars');",
+                  "pm.collectionVariables.set('name1', 'Pilot' + run);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('db erisilebilir', () => pm.expect(pm.response.json().db).to.eql('UP'));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
     {
-      "name": "1 - Giris",
+      "name": "1 - Auth  \u00b7  /v1/auth/token",
+      "description": "Cihaz sirri SADECE buraya gidiyor; karsiliginda 1 saatlik token aliniyor ve diger her istek onu tasiyor. Sunucu sirrin yalnizca BCrypt hash'ini sakliyor.\n\nBu klasor once calismali: {{tokenA}} ve {{tokenB}} burada dolduruluyor.",
       "item": [
         {
-          "name": "POST /v1/auth/token  (ilk giris = kayit)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// Store the token so every other request in the collection can use it.",
-                  "if (pm.response.code === 200) {",
-                  "    pm.collectionVariables.set('token', pm.response.json().token);",
-                  "}"
-                ]
-              }
-            }
-          ],
+          "name": "POST  ilk giris = kayit",
           "request": {
             "method": "POST",
             "header": [
@@ -91,6 +125,7 @@
                 "token"
               ]
             },
+            "description": "Bu cihaz hic gorulmemis: sunucu player_profile satirini aciyor, player_id'yi Postgres uretiyor, sirrin hash'ini sakliyor. Oyunda kayit ekrani yok \u2014 ilk temas kayit demek.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"deviceId\": \"{{deviceA}}\",\n  \"deviceSecret\": \"{{secretA}}\"\n}",
@@ -99,26 +134,25 @@
                   "language": "json"
                 }
               }
-            },
-            "description": "Bu cihaz hic gorulmemisse sunucu onu kaydediyor: player_profile satirini aciyor, player_id'yi Postgres uretiyor, ve sirrin BCrypt hash'ini sakliyor. Oyunda kayit ekrani yok, o yuzden ilk temas kayit demek.\n\nDonen token {{token}} degiskenine yaziliyor \u2014 asagidaki her istek onu kullaniyor.\n\nBeklenen: 200 {\"token\":\"eyJ...\",\"expiresIn\":3600}"
-          }
-        },
-        {
-          "name": "POST /v1/auth/token  (ayni cihaz tekrar)",
+            }
+          },
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// Store the token so every other request in the collection can use it.",
-                  "if (pm.response.code === 200) {",
-                  "    pm.collectionVariables.set('token', pm.response.json().token);",
-                  "}"
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('token dondu', () => pm.expect(pm.response.json().token).to.be.a('string').and.not.empty);",
+                  "pm.test('1 saat gecerli', () => pm.expect(pm.response.json().expiresIn).to.eql(3600));",
+                  "pm.collectionVariables.set('tokenA', pm.response.json().token);"
                 ]
               }
             }
-          ],
+          ]
+        },
+        {
+          "name": "POST  ayni cihaz tekrar",
           "request": {
             "method": "POST",
             "header": [
@@ -138,6 +172,7 @@
                 "token"
               ]
             },
+            "description": "Ayni kimlik + ayni sir. Yeni satir YARATILMIYOR, ayni oyuncu icin yeni token. Oyun bunu her acilista bir kez yapiyor.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"deviceId\": \"{{deviceA}}\",\n  \"deviceSecret\": \"{{secretA}}\"\n}",
@@ -146,26 +181,23 @@
                   "language": "json"
                 }
               }
-            },
-            "description": "Ayni kimlik + ayni sir. Yeni satir YARATILMIYOR, ayni player_id icin yeni bir token veriliyor. Oyun bunu her acilista bir kez yapiyor.\n\nBeklenen: 200, ayni oyuncu"
-          }
-        },
-        {
-          "name": "POST /v1/auth/token  (yanlis sir)",
+            }
+          },
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// Store the token so every other request in the collection can use it.",
-                  "if (pm.response.code === 200) {",
-                  "    pm.collectionVariables.set('token', pm.response.json().token);",
-                  "}"
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('tokenA', pm.response.json().token);"
                 ]
               }
             }
-          ],
+          ]
+        },
+        {
+          "name": "POST  ikinci oyuncu",
           "request": {
             "method": "POST",
             "header": [
@@ -185,100 +217,7 @@
                 "token"
               ]
             },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"deviceId\": \"{{deviceA}}\",\n  \"deviceSecret\": \"bu-sir-yanlis-ama-yeterince-uzun-32\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "description": "Kimlik dogru, sir yanlis. Cevap 401 ve hangi yarinin yanlis oldugunu SOYLEMIYOR \u2014 sylemek, birinin istek istek hesap taramasina izin vermek olurdu.\n\nEski tasarimda bu istek basarili olurdu: cihaz kimligini bilen herkes o oyuncuydu.\n\nBeklenen: 401"
-          }
-        },
-        {
-          "name": "POST /v1/auth/token  (cok kisa sir)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// Store the token so every other request in the collection can use it.",
-                  "if (pm.response.code === 200) {",
-                  "    pm.collectionVariables.set('token', pm.response.json().token);",
-                  "}"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/v1/auth/token",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "auth",
-                "token"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"deviceId\": \"{{deviceB}}\",\n  \"deviceSecret\": \"kisa\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "description": "Sir en az 32 karakter olmali. Kisa bir sir, ne kadar iyi hash'lenirse hash'lensin tahmin edilebilir; sunucunun bunu dayatmaktan baska yolu yok.\n\nBeklenen: 400 + fields.deviceSecret"
-          }
-        },
-        {
-          "name": "POST /v1/auth/token  (ikinci oyuncu)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// Store the token so every other request in the collection can use it.",
-                  "if (pm.response.code === 200) {",
-                  "    pm.collectionVariables.set('token', pm.response.json().token);",
-                  "}"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/v1/auth/token",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "auth",
-                "token"
-              ]
-            },
+            "description": "Ikinci cihaz = ikinci oyuncu. Isim catismasi ve leaderboard siralamasi icin lazim.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"deviceId\": \"{{deviceB}}\",\n  \"deviceSecret\": \"{{secretB}}\"\n}",
@@ -287,23 +226,203 @@
                   "language": "json"
                 }
               }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('tokenB', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "401  yanlis sir",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "token"
+              ]
             },
-            "description": "Ikinci bir cihaz = ikinci bir oyuncu. Leaderboard senaryolari icin lazim.\n\nDIKKAT: bu istek {{token}}'i deviceB'ninkiyle degistiriyor.\n\nBeklenen: 200"
-          }
+            "description": "Kimlik dogru, sir yanlis.\n\nEski tasarimda bu istek BASARILI olurdu: cihaz kimligini bilen herkes o oyuncuydu. Auth'un cozdugu sey tam olarak bu.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceId\": \"{{deviceA}}\",\n  \"deviceSecret\": \"bu-sir-yanlis-ama-yeterince-uzun-32-karakter\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('hangi yarinin yanlis oldugunu soylemiyor', () => {",
+                  "    // Ayirt etmek, birinin istek istek hesap taramasina izin vermek olurdu.",
+                  "    pm.expect(pm.response.text()).to.not.include(pm.collectionVariables.get('deviceA'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400  cok kisa sir",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "token"
+              ]
+            },
+            "description": "Sir en az 32 karakter. Kisa bir sir ne kadar iyi hash'lenirse hash'lensin tahmin edilebilir; sunucunun bunu dayatmaktan baska yolu yok.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceId\": \"{{deviceB}}\",\n  \"deviceSecret\": \"kisa\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('hangi alan bozuk soyleniyor', () => pm.expect(pm.response.json().fields).to.have.property('deviceSecret'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "401  token yok",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/player",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "player"
+              ]
+            },
+            "description": "Token olmadan hicbir korumali uc noktaya erisim yok. Spring Security istegi controller'a hic ulastirmadan reddediyor."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "401  sahte token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{forgedToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/player",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "player"
+              ]
+            },
+            "description": "Imzasi bozulmus token. Sunucu imzayi dogruladigi icin fark ediyor."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Gecerli bir token'in imzasinin son karakterini degistir. Icerigi hala",
+                  "// kusursuz \u2014 eski Device header'inin ASLA yakalayamayacagi sey buydu.",
+                  "const t = pm.collectionVariables.get('tokenA');",
+                  "pm.collectionVariables.set('forgedToken', t.slice(0, -1) + (t.slice(-1) === 'A' ? 'B' : 'A'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
     {
-      "name": "2 - Ilk acilis",
+      "name": "2 - Player  \u00b7  /v1/player",
+      "description": "Oyuncunun kimligi ve adi. player_id ve device_id cevaplarda ASLA gorunmuyor.",
       "item": [
         {
-          "name": "GET /v1/player  (ilk temas)",
+          "name": "GET  profilim",
           "request": {
             "method": "GET",
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{token}}"
+                "value": "Bearer {{tokenA}}"
               }
             ],
             "url": {
@@ -316,17 +435,34 @@
                 "player"
               ]
             },
-            "description": "Bu cihaz ilk kez goruluyor: sunucu player_profile satirini yaratiyor, player_id'yi Postgres uretiyor, adi rastgele veriyor.\n\nplayer_id cevapta YOK \u2014 kimlikler disari acilmiyor.\n\nBeklenen: 200 {\"displayName\":\"User<6 hane>\",\"country\":null}"
-          }
+            "description": "Kayit girista olustugu icin profil hazir. Uretilen ad `User` + 6 hane."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('uretilmis ad bicimi', () => pm.expect(pm.response.json().displayName).to.match(/^User\\d{6}$/));",
+                  "pm.test('kimlik sizmiyor', () => {",
+                  "    pm.expect(pm.response.json()).to.not.have.property('playerId');",
+                  "    pm.expect(pm.response.json()).to.not.have.property('deviceId');",
+                  "});",
+                  "pm.collectionVariables.set('firstName', pm.response.json().displayName);"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "GET /v1/player  (ayni cihaz tekrar)",
+          "name": "GET  tekrar (yeni satir yok)",
           "request": {
             "method": "GET",
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{token}}"
+                "value": "Bearer {{tokenA}}"
               }
             ],
             "url": {
@@ -339,17 +475,272 @@
                 "player"
               ]
             },
-            "description": "Ayni istek. Yeni satir YARATILMAMALI \u2014 ayni displayName donmesi bunun kaniti.\n\nBeklenen: 200, ilk istekle ayni ad"
-          }
+            "description": "Ayni ad donmeli: her istekte yeni oyuncu yaratilmadiginin kaniti."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('ayni oyuncu', () => pm.expect(pm.response.json().displayName).to.eql(pm.collectionVariables.get('firstName')));"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "GET /v1/progress  (kayit yok)",
+          "name": "PATCH  isim sec",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/player",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "player"
+              ]
+            },
+            "description": "Oyun ici profil ekrani bunu cagiracak. player_id degismiyor, sadece ad.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"{{name1}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('yeni ad donuyor', () => pm.expect(pm.response.json().displayName).to.eql(pm.collectionVariables.get('name1')));",
+                  "pm.test('uretilmis ad degisti', () => pm.expect(pm.response.json().displayName).to.not.eql(pm.collectionVariables.get('firstName')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH  ikinci oyuncuya gecerli isim",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/player",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "player"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"Kaptan{{runId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "409  ayni isim (buyuk harfle)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/player",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "player"
+              ]
+            },
+            "description": "Isimler BUYUK/KUCUK HARF DUYARSIZ benzersiz: lower(display_name) uzerinde unique index var. Duz UNIQUE olsaydi 'tarik' ve 'TARIK' yan yana var olurdu ve birini taklit etmek cok kolay olurdu.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"{{name1}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400  cok kisa isim",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/player",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "player"
+              ]
+            },
+            "description": "Kural: 3-16 karakter. Kural PlayerService'te, anotasyonda degil \u2014 cunku sunucunun urettigi varsayilan adin da ayni kurali saglamasi gerekiyor.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"ab\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400  isimde bosluk",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/player",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "player"
+              ]
+            },
+            "description": "Sadece harf/rakam/alt cizgi. Bosluk ve gorunmez karakterler taklit icin kullanilir.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"Tarik Usta\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 - Progress  \u00b7  /v1/progress",
+      "description": "Bulut kayit. Tum oyun profili tek bir jsonb sutununda; sunucu icine hic bakmiyor.\n\nBu klasoru sirayla calistir: 404 -> ilk kayit -> catisma -> dogru surum.",
+      "item": [
+        {
+          "name": "404  henuz kayit yok",
           "request": {
             "method": "GET",
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{token}}"
+                "value": "Bearer {{tokenA}}"
               }
             ],
             "url": {
@@ -362,22 +753,28 @@
                 "progress"
               ]
             },
-            "description": "Profil var ama ilerleme kaydi yok. 404, 'bos profil'den farkli bir sey soyluyor: istemci bunu gorunce kendi local kaydini yukluyor.\n\nBeklenen: 404 {\"detail\":\"no progress stored yet\"}"
-          }
-        }
-      ]
-    },
-    {
-      "name": "3 - Bulut kayit",
-      "item": [
+            "description": "Profil var ama ilerleme kaydi yok. 404, 'bos profil'den farkli bir sey soyluyor: istemci bunu gorunce kendi local kaydini yukluyor."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
         {
-          "name": "PUT /v1/progress  (ilk kayit)",
+          "name": "PUT  ilk kayit",
           "request": {
             "method": "PUT",
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{token}}"
+                "value": "Bearer {{tokenA}}"
               },
               {
                 "key": "Content-Type",
@@ -394,7 +791,7 @@
                 "progress"
               ]
             },
-            "description": "version:0 = 'elimde sunucudan gelmis bir surum yok, bu ilk yuklemem'.\n\nBeklenen: 200 {\"version\":0}\n\nSifirdan basliyor cunku Hibernate'in @Version'i oyle. Sayi istemci icin anlamsiz \u2014 sadece geri yollamasi gereken bir jeton.",
+            "description": "version:0 = 'elimde sunucudan gelmis bir surum yok, bu ilk yuklemem'.\n\nDonen surum 0, cunku Hibernate'in @Version'i sifirdan basliyor. Sayi istemci icin anlamsiz \u2014 sadece geri yollamasi gereken bir jeton.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"progress\": {\n    \"schemaVersion\": 5,\n    \"wallet\": 100,\n    \"ownedShipIds\": [\n      \"scout\"\n    ]\n  },\n  \"version\": 0\n}",
@@ -404,16 +801,28 @@
                 }
               }
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('surum 0', () => pm.expect(pm.response.json().version).to.eql(0));"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "GET /v1/progress  (geri oku)",
+          "name": "GET  geri oku",
           "request": {
             "method": "GET",
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{token}}"
+                "value": "Bearer {{tokenA}}"
               }
             ],
             "url": {
@@ -426,17 +835,30 @@
                 "progress"
               ]
             },
-            "description": "Dikkat: cevapta userId var ama sen gondermedin. Sunucu kendi player_id'sini basiyor. Body'ye \"userId\":\"hacker\" yazip yollasan bile uzerine yazar.\n\nBeklenen: 200, progress.userId = sunucunun uuid'si, version 0"
-          }
+            "description": "Dikkat: cevapta userId var ama sen gondermedin. Sunucu kendi player_id'sini basiyor. Body'ye \"userId\":\"hacker\" yazip yollasan bile uzerine yazar."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('kaydettigimiz veri geldi', () => pm.expect(pm.response.json().progress.wallet).to.eql(100));",
+                  "pm.test('userId sunucu tarafindan basilmis', () => pm.expect(pm.response.json().progress.userId).to.match(/^[0-9a-f-]{36}$/));"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "PUT /v1/progress  (eski surum -> catisma)",
+          "name": "409  eski surum -> catisma",
           "request": {
             "method": "PUT",
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{token}}"
+                "value": "Bearer {{tokenA}}"
               },
               {
                 "key": "Content-Type",
@@ -453,7 +875,7 @@
                 "progress"
               ]
             },
-            "description": "version:5 gibi yanlis bir surum yolluyoruz, sunucu 0'da. Optimistic locking devrede: UPDATE ... WHERE version = 5 hicbir satira uymuyor, 0 satir etkileniyor.\n\nSunucu koru korune ezmek yerine kendi kopyasini geri veriyor. wallet:999 YAZILMADI. Bu olmasaydi: telefonda kazandigin scrap, tablette eski profil kaydedilince ucardi.\n\nBeklenen: 409 {\"serverVersion\":0,\"progress\":{...}}",
+            "description": "Yanlis bir surum yolluyoruz. Optimistic locking devrede: UPDATE ... WHERE version = 5 hicbir satira uymuyor.\n\nSunucu koru korune ezmek yerine kendi kopyasini geri veriyor. wallet:999 YAZILMADI. Bu olmasaydi: telefonda kazandigin scrap, tablette eski profil kaydedilince ucardi.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"progress\": {\n    \"wallet\": 999\n  },\n  \"version\": 5\n}",
@@ -463,16 +885,29 @@
                 }
               }
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('sunucunun surumu bildiriliyor', () => pm.expect(pm.response.json().serverVersion).to.eql(0));",
+                  "pm.test('sunucunun kopyasi geri veriliyor', () => pm.expect(pm.response.json().progress.wallet).to.eql(100));"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "PUT /v1/progress  (dogru surum)",
+          "name": "PUT  dogru surum",
           "request": {
             "method": "PUT",
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{token}}"
+                "value": "Bearer {{tokenA}}"
               },
               {
                 "key": "Content-Type",
@@ -489,7 +924,7 @@
                 "progress"
               ]
             },
-            "description": "Artik elindeki surum dogru. Yazildi, surum 1 oldu.\n\nBeklenen: 200 {\"version\":1}",
+            "description": "Artik elindeki surum dogru. Yazildi, surum 1 oldu.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"progress\": {\n    \"schemaVersion\": 5,\n    \"wallet\": 250\n  },\n  \"version\": 0\n}",
@@ -499,134 +934,125 @@
                 }
               }
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('surum ilerledi', () => pm.expect(pm.response.json().version).to.eql(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "413  profil cok buyuk",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/progress",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "progress"
+              ]
+            },
+            "description": "64 KB siniri. Gercek bir profil birkac yuz bayt.\n\nBoyut kontrolu surum kontrolunden ONCE calisiyor, o yuzden surum dogru olsa da 413 doner.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"progress\": { \"junk\": \"{{bigBlob}}\" },\n  \"version\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 70 KB dolgu, burada uretiliyor ki koleksiyon dosyasi kucuk kalsin.",
+                  "pm.variables.set('bigBlob', 'x'.repeat(70000));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 413', () => pm.response.to.have.status(413));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "405  desteklenmeyen method",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/progress",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "progress"
+              ]
+            },
+            "description": "Bir zamanlar 500 donuyordu: Exception yakalayicisi Spring MVC'nin kendi istisnalarini yutuyordu."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 405', () => pm.response.to.have.status(405));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
     {
-      "name": "4 - Isim secme",
+      "name": "4 - Leaderboard  \u00b7  /v1/leaderboard",
+      "description": "Oyuncu basina MOD basina tek satir \u2014 run gecmisi degil, en iyisi. Sunucu yalnizca rekoru gecerse yaziyor.",
       "item": [
         {
-          "name": "PATCH /v1/player  (isim sec)",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/v1/player",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "player"
-              ]
-            },
-            "description": "Oyun ici profil ekrani bunu cagiracak. player_id degismiyor, sadece ad.\n\nBeklenen: 200 {\"displayName\":\"Tarik\"}",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"displayName\": \"Tarik\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
-          "name": "PATCH /v1/player  (ayni isim, ikinci oyuncu)",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/v1/player",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "player"
-              ]
-            },
-            "description": "Isimler BUYUK/KUCUK HARF DUYARSIZ benzersiz: lower(display_name) uzerinde unique index var. Duz UNIQUE olsaydi 'tarik' ve 'TARIK' yan yana var olurdu ve birini taklit etmek cok kolay olurdu.\n\nBeklenen: 409 {\"detail\":\"name already taken\"}",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"displayName\": \"TARIK\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
-          "name": "PATCH /v1/player  (gecerli isim)",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/v1/player",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "player"
-              ]
-            },
-            "description": "Beklenen: 200",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"displayName\": \"Kaptan_42\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "5 - Leaderboard",
-      "item": [
-        {
-          "name": "POST /v1/leaderboard  (skor gonder)",
+          "name": "POST  skor gonder",
           "request": {
             "method": "POST",
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{token}}"
+                "value": "Bearer {{tokenA}}"
               },
               {
                 "key": "Content-Type",
@@ -643,7 +1069,7 @@
                 "leaderboard"
               ]
             },
-            "description": "Run bitiminde oyun bunu gonderiyor. Sunucu yalnizca rekoru gecerse yaziyor.\n\nBeklenen: 200 {\"personalBest\":300,\"isNewRecord\":true,\"rank\":?}",
+            "description": "Run bitiminde oyun bunu gonderiyor.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"mode\": \"infinite\",\n  \"survivedSeconds\": 300,\n  \"kills\": 420,\n  \"reachedLevel\": 18,\n  \"bossesDefeated\": 1\n}",
@@ -653,16 +1079,29 @@
                 }
               }
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('yeni rekor', () => pm.expect(pm.response.json().isNewRecord).to.be.true);",
+                  "pm.test('en iyi 300', () => pm.expect(pm.response.json().personalBest).to.eql(300));"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "POST /v1/leaderboard  (ikinci oyuncu, daha iyi)",
+          "name": "POST  ikinci oyuncu, daha iyi",
           "request": {
             "method": "POST",
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{token}}"
+                "value": "Bearer {{tokenB}}"
               },
               {
                 "key": "Content-Type",
@@ -679,7 +1118,7 @@
                 "leaderboard"
               ]
             },
-            "description": "Beklenen: 200, rank 1",
+            "description": "",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"mode\": \"infinite\",\n  \"survivedSeconds\": 600,\n  \"kills\": 900,\n  \"reachedLevel\": 30,\n  \"bossesDefeated\": 3\n}",
@@ -689,16 +1128,28 @@
                 }
               }
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('yeni rekor', () => pm.expect(pm.response.json().isNewRecord).to.be.true);"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "POST /v1/leaderboard  (daha kotu run)",
+          "name": "POST  daha kotu run (yazilmaz)",
           "request": {
             "method": "POST",
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{token}}"
+                "value": "Bearer {{tokenA}}"
               },
               {
                 "key": "Content-Type",
@@ -715,7 +1166,7 @@
                 "leaderboard"
               ]
             },
-            "description": "200 donuyor ama HICBIR SEY YAZILMIYOR. 200 'istegini isledim' demek, 'veriyi degistirdim' demek degil. Gercek cevap isNewRecord:false.\n\nTablo run gecmisi degil, oyuncu basina EN IYI \u2014 tek satir.\n\nBeklenen: 200 {\"isNewRecord\":false,\"personalBest\":300}",
+            "description": "200 donuyor ama HICBIR SEY YAZILMIYOR. 200 'istegini isledim' demek, 'veriyi degistirdim' demek degil. Gercek cevap isNewRecord:false.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"mode\": \"infinite\",\n  \"survivedSeconds\": 250,\n  \"kills\": 300,\n  \"reachedLevel\": 15,\n  \"bossesDefeated\": 1\n}",
@@ -725,16 +1176,29 @@
                 }
               }
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('rekor degil', () => pm.expect(pm.response.json().isNewRecord).to.be.false);",
+                  "pm.test('en iyi hala 300', () => pm.expect(pm.response.json().personalBest).to.eql(300));"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "GET /v1/leaderboard",
+          "name": "GET  tabloyu cek",
           "request": {
             "method": "GET",
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{token}}"
+                "value": "Bearer {{tokenA}}"
               }
             ],
             "url": {
@@ -757,112 +1221,35 @@
                 }
               ]
             },
-            "description": "Filtre URL'de, cunku GET'in govdesi olmaz. Listede user_id/player_id YOK \u2014 sadece displayName; kimlikler disari sizmiyor.\n\nBeklenen: 200, siralama + kendi durumun (me)"
-          }
-        }
-      ]
-    },
-    {
-      "name": "6 - Hata senaryolari",
-      "item": [
-        {
-          "name": "401 - token yok",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/v1/player",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "player"
-              ]
-            },
-            "description": "Token olmadan hicbir uc noktaya erisim yok. Spring Security istegi controller'a hic ulastirmadan reddediyor.\n\nBeklenen: 401"
-          }
-        },
-        {
-          "name": "400 - isim cok kisa",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/v1/player",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "player"
-              ]
-            },
-            "description": "Kural: 3-16 karakter. Kural PlayerService'te, anotasyonda degil \u2014 cunku sunucunun urettigi varsayilan adin da ayni kurali saglamasi gerekiyor.\n\nBeklenen: 400",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"displayName\": \"ab\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
+            "description": "Filtre URL'de, cunku GET'in govdesi olmaz. Listede player_id YOK \u2014 sadece displayName; kimlikler disari sizmiyor."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('sureye gore azalan sirali', () => {",
+                  "    const s = pm.response.json().entries.map(e => e.survivedSeconds);",
+                  "    pm.expect(s).to.eql([...s].sort((a, b) => b - a));",
+                  "});",
+                  "pm.test('sira numaralari 1den basliyor', () => pm.expect(pm.response.json().entries[0].rank).to.eql(1));",
+                  "pm.test('kendi durumum var', () => pm.expect(pm.response.json().me.survivedSeconds).to.eql(300));",
+                  "pm.test('kimlik sizmiyor', () => pm.expect(pm.response.json().entries[0]).to.not.have.property('playerId'));"
+                ]
               }
             }
-          }
+          ]
         },
         {
-          "name": "400 - isimde bosluk",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/v1/player",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "player"
-              ]
-            },
-            "description": "Sadece harf/rakam/alt cizgi. Bosluk ve gorunmez karakterler taklit icin kullanilir, leaderboard hizalamasini da bozar.\n\nBeklenen: 400",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"displayName\": \"Tarik Usta\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
-          "name": "400 - negatif alan",
+          "name": "400  negatif alan",
           "request": {
             "method": "POST",
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{token}}"
+                "value": "Bearer {{tokenA}}"
               },
               {
                 "key": "Content-Type",
@@ -879,7 +1266,7 @@
                 "leaderboard"
               ]
             },
-            "description": "Alan bicimi hatasi. Anotasyonlar yakaliyor, kod servise hic girmiyor. Cevap hangi alanlarin bozuk oldugunu soyluyor.\n\nBeklenen: 400 + fields.kills, fields.reachedLevel",
+            "description": "Alan bicimi hatasi. Anotasyonlar yakaliyor, kod servise hic girmiyor.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"mode\": \"infinite\",\n  \"survivedSeconds\": 100,\n  \"kills\": -5,\n  \"reachedLevel\": 0,\n  \"bossesDefeated\": 0\n}",
@@ -889,16 +1276,31 @@
                 }
               }
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('iki alan da bildiriliyor', () => {",
+                  "    pm.expect(pm.response.json().fields).to.have.property('kills');",
+                  "    pm.expect(pm.response.json().fields).to.have.property('reachedLevel');",
+                  "});"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "422 - hile",
+          "name": "422  hile",
           "request": {
             "method": "POST",
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{token}}"
+                "value": "Bearer {{tokenA}}"
               },
               {
                 "key": "Content-Type",
@@ -915,7 +1317,7 @@
                 "leaderboard"
               ]
             },
-            "description": "400 ile 422 farki: JSON kusursuz, her alan dogru tipte ve pozitif. Sunucu istegi ANLADI. Sadece '10 saniyede 50.000 kill bu oyunda olmaz' diyor.\n\n400 = anlayamadim. 422 = anladim ama olmaz.\n\nBeklenen: 422 {\"detail\":\"kill rate is not achievable in that time\"}",
+            "description": "400 ile 422 farki: JSON kusursuz, her alan dogru tipte ve pozitif. Sunucu istegi ANLADI. Sadece '10 saniyede 50.000 kill bu oyunda olmaz' diyor.\n\n400 = anlayamadim. 422 = anladim ama olmaz.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"mode\": \"infinite\",\n  \"survivedSeconds\": 10,\n  \"kills\": 50000,\n  \"reachedLevel\": 1,\n  \"bossesDefeated\": 0\n}",
@@ -925,16 +1327,27 @@
                 }
               }
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "422 - bilinmeyen mod",
+          "name": "422  bilinmeyen mod",
           "request": {
             "method": "POST",
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{token}}"
+                "value": "Bearer {{tokenA}}"
               },
               {
                 "key": "Content-Type",
@@ -951,7 +1364,7 @@
                 "leaderboard"
               ]
             },
-            "description": "Beklenen: 422",
+            "description": "",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"mode\": \"sandbox\",\n  \"survivedSeconds\": 10,\n  \"kills\": 1,\n  \"reachedLevel\": 1,\n  \"bossesDefeated\": 0\n}",
@@ -961,51 +1374,54 @@
                 }
               }
             }
-          }
-        },
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5 - Genel",
+      "description": "Herhangi bir kaynaga ait olmayan davranislar.",
+      "item": [
         {
-          "name": "413 - profil cok buyuk",
+          "name": "404  olmayan yol",
           "request": {
-            "method": "PUT",
+            "method": "GET",
             "header": [
               {
                 "key": "Authorization",
-                "value": "Bearer {{token}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
+                "value": "Bearer {{tokenA}}"
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/progress",
+              "raw": "{{baseUrl}}/v1/yokboyle",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "v1",
-                "progress"
+                "yokboyle"
               ]
             },
-            "description": "64 KB siniri. Gercek bir profil birkac yuz bayt.\n\nBeklenen: 413",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"progress\": { \"junk\": \"{{bigBlob}}\" },\n  \"version\": 1\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
+            "description": "Bir zamanlar 500 donuyordu. Exception yakalayicisinin altina Spring'in kendi handler'i konunca duzeldi."
           },
           "event": [
             {
-              "listen": "prerequest",
+              "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// 70 KB of filler, built here so the collection file stays small.",
-                  "pm.variables.set('bigBlob', 'x'.repeat(70000));"
+                  "pm.test('status 404', () => pm.response.to.have.status(404));"
                 ]
               }
             }
