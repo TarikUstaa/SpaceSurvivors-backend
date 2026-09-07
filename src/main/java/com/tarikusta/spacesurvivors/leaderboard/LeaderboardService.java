@@ -2,8 +2,7 @@ package com.tarikusta.spacesurvivors.leaderboard;
 
 import com.tarikusta.spacesurvivors.auth.Caller;
 import com.tarikusta.spacesurvivors.player.PlayerService;
-import com.tarikusta.spacesurvivors.web.ApiException;
-import org.springframework.http.HttpStatus;
+import com.tarikusta.spacesurvivors.domain.RuleViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -100,7 +99,7 @@ public class LeaderboardService {
                 .map(m -> m.trim().toLowerCase(Locale.ROOT))
                 .orElse("");
         if (!MODES.contains(normalised)) {
-            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "mode must be one of " + MODES);
+            throw new RuleViolationException("mode must be one of " + MODES);
         }
         return normalised;
     }
@@ -108,8 +107,7 @@ public class LeaderboardService {
     private void rejectImplausible(LeaderboardDtos.Submission run) {
         if (run.survivedSeconds() >= MIN_SECONDS_TO_JUDGE_RATE
                 && run.kills() / run.survivedSeconds() > MAX_KILLS_PER_SECOND) {
-            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "kill rate is not achievable in that time");
+            throw new RuleViolationException("kill rate is not achievable in that time");
         }
     }
 }

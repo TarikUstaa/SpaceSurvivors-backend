@@ -23,7 +23,7 @@ public class PlayerController {
     /** GET /v1/player — who am I? Creates the profile on first contact. */
     @GetMapping
     public PlayerDtos.PlayerView me(@RequestAttribute(Caller.ATTR) Caller caller) {
-        return players.view(caller);
+        return PlayerDtos.PlayerView.of(players.view(caller));
     }
 
     /**
@@ -33,6 +33,6 @@ public class PlayerController {
     @PatchMapping
     public PlayerDtos.PlayerView rename(@RequestAttribute(Caller.ATTR) Caller caller,
                                         @Valid @RequestBody PlayerDtos.RenameRequest body) {
-        return players.rename(caller, body.displayName());
+        return PlayerDtos.PlayerView.of(players.rename(caller, body.displayName()));
     }
 }

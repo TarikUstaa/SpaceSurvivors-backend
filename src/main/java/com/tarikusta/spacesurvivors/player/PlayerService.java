@@ -1,9 +1,10 @@
 package com.tarikusta.spacesurvivors.player;
 
 import com.tarikusta.spacesurvivors.auth.Caller;
-import com.tarikusta.spacesurvivors.web.ApiException;
+import com.tarikusta.spacesurvivors.domain.AlreadyTakenException;
+import com.tarikusta.spacesurvivors.domain.InvalidInputException;
+import com.tarikusta.spacesurvivors.domain.NotFoundException;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,20 +56,16 @@ public class PlayerService {
 
     /** GET /v1/player — resolve the caller, creating the profile on first contact. */
     @Transactional
-    public PlayerDtos.PlayerView view(Caller caller) {
-        return toView(require(resolveOrCreate(caller)));
+    public Player view(Caller caller) {
+        return require(resolveOrCreate(caller));
     }
 
-    /** PATCH /v1/player — set the caller's display name and hand back the updated view. */
+    /** PATCH /v1/player — set the caller's display name and hand back the updated player. */
     @Transactional
-    public PlayerDtos.PlayerView rename(Caller caller, String requestedName) {
+    public Player rename(Caller caller, String requestedName) {
         UUID playerId = resolveOrCreate(caller);
         applyName(playerId, requestedName);
-        return toView(require(playerId));
-    }
-
-    private static PlayerDtos.PlayerView toView(PlayerRepository.PlayerRow row) {
-        return new PlayerDtos.PlayerView(row.displayName(), row.country());
+        return require(playerId);
     }
 
     /**
@@ -87,16 +84,16 @@ public class PlayerService {
         requireValidName(name);
         try {
             if (!players.rename(playerId, name)) {
-                throw new ApiException(HttpStatus.NOT_FOUND, "player not found");
+                throw new NotFoundException("player not found");
             }
         } catch (DuplicateKeyException e) {
-            throw new ApiException(HttpStatus.CONFLICT, "name already taken");
+            throw new AlreadyTakenException("name already taken");
         }
     }
 
-    private PlayerRepository.PlayerRow require(UUID playerId) {
+    private Player require(UUID playerId) {
         return players.find(playerId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "player not found"));
+                .orElseThrow(() -> new NotFoundException("player not found"));
     }
 
     /**
@@ -124,7 +121,8 @@ public class PlayerService {
             }
             // the name was taken, not the device — try another
         }
-        throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "could not allocate a player name");
+        throw new IllegalStateException("could not allocate a player name after "
+                + MAX_NAME_ATTEMPTS + " attempts");
     }
 
     /** e.g. {@code User104829}. Random rather than sequential so it does not leak the player count. */
@@ -134,7 +132,7 @@ public class PlayerService {
 
     private static void requireValidName(String name) {
         if (name.length() < NAME_MIN || name.length() > NAME_MAX) {
-            throw new ApiException(HttpStatus.BAD_REQUEST,
+            throw new InvalidInputException(
                     "name must be " + NAME_MIN + "-" + NAME_MAX + " characters");
         }
         for (int i = 0; i < name.length(); i++) {
@@ -142,7 +140,7 @@ public class PlayerService {
             boolean allowed = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
                     || (c >= '0' && c <= '9') || c == '_';
             if (!allowed) {
-                throw new ApiException(HttpStatus.BAD_REQUEST,
+                throw new InvalidInputException(
                         "name may only contain letters, digits and underscore");
             }
         }

@@ -2,8 +2,9 @@ package com.tarikusta.spacesurvivors.progress;
 
 import com.tarikusta.spacesurvivors.auth.Caller;
 import com.tarikusta.spacesurvivors.player.PlayerService;
-import com.tarikusta.spacesurvivors.web.ApiException;
-import org.springframework.http.HttpStatus;
+import com.tarikusta.spacesurvivors.domain.InvalidInputException;
+import com.tarikusta.spacesurvivors.domain.NotFoundException;
+import com.tarikusta.spacesurvivors.domain.TooLargeException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
@@ -43,7 +44,7 @@ public class ProgressService {
         UUID playerId = players.resolveOrCreate(caller);
         return progress.find(playerId)
                 .map(stored -> new ProgressDtos.ProgressView(json.readTree(stored.json()), stored.version()))
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "no progress stored yet"));
+                .orElseThrow(() -> new NotFoundException("no progress stored yet"));
     }
 
     /**
@@ -64,7 +65,7 @@ public class ProgressService {
 
         String progressJson = json.writeValueAsString(toStore);
         if (progressJson.getBytes(StandardCharsets.UTF_8).length > MAX_PROGRESS_BYTES) {
-            throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "progress exceeds 64 KB");
+            throw new TooLargeException("progress exceeds 64 KB");
         }
 
         // Try the write first. The common case — an established player saving again —
@@ -95,7 +96,7 @@ public class ProgressService {
      */
     private static ObjectNode requireObject(JsonNode body) {
         if (body == null || !body.isObject()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "progress must be a JSON object");
+            throw new InvalidInputException("progress must be a JSON object");
         }
         return (ObjectNode) body.deepCopy();
     }

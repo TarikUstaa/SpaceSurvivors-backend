@@ -18,7 +18,14 @@ public final class PlayerDtos {
     public record RenameRequest(@NotBlank String displayName) {
     }
 
-    /** What the game shows on its profile screen. Neither id is exposed. */
+    /**
+     * What the game shows on its profile screen. Neither id is exposed, and neither is
+     * the stored address — a response carries only what a client has business seeing.
+     */
     public record PlayerView(String displayName, String country) {
+
+        public static PlayerView of(Player player) {
+            return new PlayerView(player.displayName(), player.country());
+        }
     }
 }

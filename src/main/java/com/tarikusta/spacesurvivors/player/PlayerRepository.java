@@ -91,24 +91,18 @@ public class PlayerRepository {
                 .update() == 1;
     }
 
-    public Optional<PlayerRow> find(UUID playerId) {
+    public Optional<Player> find(UUID playerId) {
         return db.sql("""
-                        SELECT player_id, device_id, display_name, country,
-                               host(last_ip) AS last_ip, first_login_date, updated_at
+                        SELECT player_id, device_id, display_name, country
                           FROM player_profile
                          WHERE player_id = :id
                         """)
                 .param("id", playerId)
-                .query((rs, rowNum) -> new PlayerRow(
+                .query((rs, rowNum) -> new Player(
                         rs.getObject("player_id", UUID.class),
                         rs.getString("device_id"),
                         rs.getString("display_name"),
-                        rs.getString("country"),
-                        rs.getString("last_ip")))
+                        rs.getString("country")))
                 .optional();
-    }
-
-    public record PlayerRow(UUID playerId, String deviceId, String displayName,
-                            String country, String lastIp) {
     }
 }
