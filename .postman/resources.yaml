@@ -1,0 +1,7 @@
+# Use this workspace to collaborate
+workspace:
+  id: 398e608f-c98c-4b50-8a24-d7f1bd3a8090
+
+localResources:
+  collections:
+    - ../docs/SpaceSurvivors.postman_collection.json

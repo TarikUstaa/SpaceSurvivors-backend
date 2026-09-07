@@ -29,7 +29,7 @@ as the code.
 An earlier attempt (Gradle + VS Code) was built and then **scrapped on 2026-09-04**:
 Tarik had said the backend would be IntelliJ + Maven and that was missed. The Java
 source was sound and largely carried over; only the build tool and IDE changed.
-That repo was deleted. Current repo starts at `29c80e5`.
+That repo was deleted. Current repo starts at `d1f930b`.
 
 ---
 
@@ -37,7 +37,7 @@ That repo was deleted. Current repo starts at `29c80e5`.
 
 Tarik's mentor (25-30 years of Java) reviewed the code and asked for three things.
 
-**1. Use `JpaRepository`, not `JdbcClient`. — DONE** (`8d93a11`, `c672dac`, `e3039ce`). D2 is overturned. The technical
+**1. Use `JpaRepository`, not `JdbcClient`. — DONE** (`3386cd0`, `500a763`, `09731e8`). D2 is overturned. The technical
 case for `JdbcClient` was real but optimised for the wrong goal: this project exists for
 Tarik to learn, and Spring Data JPA is what the industry and the job market mean by
 "Spring". It also removes hand-written code that JPA already provides — `@Version` *is*
@@ -418,13 +418,13 @@ which happens at the end of every run.
 
 | Phase | Commit | What landed |
 |---|---|---|
-| F1 | `29c80e5` | Maven/Spring Boot 4 project, Postgres wiring, Flyway `V1__init.sql` (users / players / leaderboard_entries), `GET /health` |
-| F2 | `25dad9e` | `DevAuthFilter`, `GET/PUT /v1/profile`, optimistic locking, `ApiException` + handler |
-| F3 | `d5e71ba` | `POST/GET /v1/scores`, bean validation, upsert-if-better, rank + board |
-| — | `9878350` | `docs/ogrenme-rehberi.md` — Spring Boot learning guide over this codebase |
-| — | `8f1c9f7` | this file |
-| F5a | game repo `18d0745` | **Unity client connected.** `HttpProfileStore` / `ProfileMerge` / `BackendConfig` / `BackendBootstrap` + an editor settings window, all behind the game's existing `IProfileStore` seam. Verified end to end against this backend: the real save (wallet 481) now round-trips through `players`. |
-| F5b | game repo `fa83b63` | **Leaderboard connected.** `HttpLeaderboardStore` posts finished runs to `/v1/scores`. Verified: upsert-if-better replaces the single row in place. `GET /v1/scores` still has no client — nothing in the game displays a board yet. |
+| F1 | `d1f930b` | Maven/Spring Boot 4 project, Postgres wiring, Flyway `V1__init.sql` (users / players / leaderboard_entries), `GET /health` |
+| F2 | `0c742cd` | `DevAuthFilter`, `GET/PUT /v1/profile`, optimistic locking, `ApiException` + handler |
+| F3 | `da6f750` | `POST/GET /v1/scores`, bean validation, upsert-if-better, rank + board |
+| — | `dd2506c` | `docs/ogrenme-rehberi.md` — Spring Boot learning guide over this codebase |
+| — | `1eef668` | this file |
+| F5a | game repo `73e0ae1` | **Unity client connected.** `HttpProfileStore` / `ProfileMerge` / `BackendConfig` / `BackendBootstrap` + an editor settings window, all behind the game's existing `IProfileStore` seam. Verified end to end against this backend: the real save (wallet 481) now round-trips through `players`. |
+| F5b | game repo `6fe1eac` | **Leaderboard connected.** `HttpLeaderboardStore` posts finished runs to `/v1/scores`. Verified: upsert-if-better replaces the single row in place. `GET /v1/scores` still has no client — nothing in the game displays a board yet. |
 | F6 | (this change) | **Schema and layering rework** — see D9-D12. `users`+`players` became `player_profile`+`player_progress`; `player_id uuid` split from `device_id`; unique case-insensitive display names with `PATCH /v1/player`; `DevAuthFilter` became `DeviceAuthFilter` carrying a `Caller`; controllers reduced to delegation; `HealthService` added; endpoint renamed `/v1/profile` -> `/v1/progress`. DB dropped and rebuilt from the rewritten V1. Unity client updated (header, URL, wire field `profile` -> `progress`, full-GUID device id). 15 curl scenarios green. |
 
 **Verification approach:** every phase curl-tested end to end against local Postgres
@@ -445,7 +445,7 @@ by Tarik. Automated tests are still just the context-load smoke test — a gap, 
    collection with a `{{baseUrl}}` variable.
 2. **Unity integration** — `HttpProfileStore` / `HttpLeaderboardStore` against the
    existing `IProfileStore` / `ILeaderboardStore` seams in the game repo (commit
-   `0989f99` there opened them). Offline-first: local cache is the source of truth,
+   `149b032` there opened them). Offline-first: local cache is the source of truth,
    sync in the background, merge on 409.
 3. **Display name** — D8, together with the Unity work.
 4. **Real tests.** Only `SpacesurvivorsApplicationTests` (context loads) exists. Worth
