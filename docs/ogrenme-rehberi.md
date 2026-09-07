@@ -12,16 +12,23 @@ cevapları `docs/savunma-notlari.md`'de.
 
 ```
 com.tarikusta.spacesurvivors
-├── auth/          Caller, DeviceAuthFilter        "sen kimsin"
-├── domain/        6 istisna sınıfı                "ne ters gitti" (HTTP'den bağımsız)
-├── player/        Controller, Service, Repository,
-│                  Player, PlayerDtos              kimlik + isim
-├── progress/      Controller, Service, Repository,
-│                  ProgressDtos                    bulut kayıt
-├── leaderboard/   Controller, Service, Repository,
-│                  LeaderboardDtos                 skorlar
-└── web/           ApiExceptionHandler,
-                   HealthController, HealthService  HTTP ortak işleri
+├── auth/          Caller, DeviceAuthFilter            "sen kimsin"
+├── domain/        6 istisna sınıfı                    "ne ters gitti" (HTTP'den bağımsız)
+├── player/        PlayerController, PlayerService,
+│                  PlayerProfileRepository,
+│                  PlayerProfile (@Entity), Player,
+│                  PlayerDtos                          kimlik + isim
+├── progress/      ProgressController, ProgressService,
+│                  PlayerProgressRepository,
+│                  PlayerProgress (@Entity),
+│                  ProgressDtos                        bulut kayıt
+├── leaderboard/   LeaderboardController, ...Service,
+│                  LeaderboardEntryRepository,
+│                  LeaderboardEntry (@Entity),
+│                  LeaderboardEntryId, BoardRow,
+│                  LeaderboardDtos                     skorlar
+└── web/           ApiExceptionHandler, OpenApiConfig,
+                   HealthController, HealthService     HTTP ortak işleri
 ```
 
 **Paket-özellik-başına** (package-by-feature) düzen: bir özelliğin controller'ı, servisi,
@@ -79,77 +86,83 @@ Bu, bu rehberin kendi iddiasıyla çelişiyordu. Düzeltildi — 5. bölüme bak
 
 ---
 
-## 2. "Entity" nerede? — ve JPA'ya geçiş kararı
+## 2. Entity ve JPA
 
-Spring Boot öğrenirken her yerde şu dörtlüyü görürsün:
+Spring Boot öğrenirken her yerde şu dörtlüyü görürsün, ve bu projede dördü de var:
 
 > Controller → Service → **Repository (JPA)** → **Entity**
 
-Bu projede şu an **Entity yok**, çünkü JPA yerine `JdbcClient` kullanıyoruz. **Ama bu
-değişecek** — Tarık'ın mentörü JPA'ya geçilmesini istedi ve haklı.
+Üç tablo, üç entity:
 
-### JPA ne yapar?
+| Entity | Tablo | Öne çıkan |
+|---|---|---|
+| `PlayerProfile` | `player_profile` | `@GeneratedValue`, `inet` kolonu |
+| `PlayerProgress` | `player_progress` | `@JdbcTypeCode(SqlTypes.JSON)`, **`@Version`** |
+| `LeaderboardEntry` | `leaderboard` | `@IdClass` — bileşik anahtar |
 
-JPA (Java Persistence API) bir **ORM**'dir — Object-Relational Mapping. Java nesnelerini
-otomatik olarak tablo satırlarına çevirir:
+### Entity ile `record` farkı — bu projedeki en önemli ayrım
 
 ```java
-@Entity
-@Table(name = "player_progress")
-class PlayerProgress {
+@Entity @Table(name = "player_progress")
+public class PlayerProgress {
+    @Id  @Column(name = "player_id")  private UUID playerId;
 
-    @Id
-    private UUID playerId;
+    @JdbcTypeCode(SqlTypes.JSON)                    // String -> jsonb
+    @Column(name = "progress_data")   private String progressData;
 
-    @JdbcTypeCode(SqlTypes.JSON)      // Hibernate'in jsonb desteği
-    private String progressData;
-
-    @Version                          // optimistic locking'i JPA yönetir
-    private int version;
-}
-
-interface PlayerProgressRepository extends JpaRepository<PlayerProgress, UUID> {
-    // SQL yazmadan hazır gelir: save(), findById(), delete()...
+    @Version                          private int version;
 }
 ```
 
-### Neden başta kullanmadım, neden şimdi geçiyoruz
+**Entity yönetilir.** Transaction içinde Hibernate onu izler; bir alanını değiştirirsen
+`save()` çağırmasan bile commit'te veritabanına yazılır. `PlayerService.applyName` tam
+bunu kullanıyor: `profile.setDisplayName(name)` diyor, gerisi Hibernate'in.
 
-Gerekçem şuydu: profil tek bir jsonb blob (ORM'in çevireceği nesne yok), iki kritik sorgu
-zaten native SQL (`ON CONFLICT` upsert, sıralama alt sorgusu), ve JPA'nın örtük
-davranışları (lazy loading, dirty checking, N+1) öğrenirken kafa karıştırır.
+**`record`'lar sadece taşır.** `Player`, `BoardRow`, `PlayerDtos.PlayerView` — okunur,
+kullanılır, atılır. Değiştirsen hiçbir şey olmaz.
 
-**Ama yanlış şeyi optimize etmişim.** Bu proje öğrenmek için var ve piyasada Spring
-denince kastedilen Spring Data JPA. Üstelik JPA bir noktada beni doğrudan yanıltıyor:
+O yüzden ikisi yan yana: `PlayerProfile` (entity, veritabanı satırı) ve `Player` (record,
+uygulamanın konuştuğu şekil), arada `toPlayer()`. **Entity servis katmanının dışına
+çıkmıyor.**
 
-> `@Version` = bizim elle yazdığımız optimistic locking.
+### `@Version` — elle yazdığımızın yerine geçen tek anotasyon
 
-`ProgressRepository.update`'te `WHERE version = :v` yazıp etkilenen satır sayısına bakarak
-yaptığımız şeyi, JPA tek anotasyonla veriyor.
+Bu proje optimistic locking'i başta elle yazıyordu:
 
-**Geçişte iki dikkat noktası:**
-- `leaderboard`'ın bileşik anahtarı (`player_id, mode`) → `@IdClass` veya `@EmbeddedId`
-- Upsert'ün JPA karşılığı yok → `@Query(nativeQuery = true)` olarak kalacak. Karma
-  kullanım normaldir, utanılacak bir şey değil.
-
-Şema değişmiyor, sadece repository katmanı değişiyor.
-
-### Şu anki "Entity" karşılığımız
-
-Anotasyonsuz, sadece veri taşıyan `record`'lar:
-
-```java
-// player/Player.java — uygulama bu oyuncuyu böyle biliyor
-public record Player(UUID id, String deviceId, String displayName, String country) { }
-
-// progress/ProgressRepository.java içinde — SQL'den okunan ham hâl
-public record StoredProgress(String json, int version) { }
+```sql
+UPDATE player_progress SET ..., version = version + 1
+ WHERE player_id = :id AND version = :v      -- 0 satır dönerse çakışma
 ```
 
-Fark: Entity **veritabanı satırıdır** — JPA onu takip eder, değiştirince otomatik
-kaydeder. Bizim record'larımız sadece **taşıma kabıdır**: okunur, kullanılır, atılır.
-Sihir yok. JPA'ya geçince bu fark somutlaşacak.
+`@Version` tam olarak bu SQL'i üretiyor ve eşleşme olmazsa
+`ObjectOptimisticLockingFailureException` fırlatıyor.
 
+**Ama servis hâlâ sürümü kendi karşılaştırıyor**, fırlatmasını beklemiyor. Sebebi
+kritik: fırlayan istisna transaction'ı **rollback-only** işaretler, dolayısıyla `409`
+gövdesi için sunucunun kopyasını çeken sorgu artık çalışamaz. `@Version` yine de bir işe
+yarıyor — bizim okumamızla yazmamız arasına giren dar yarışı yakalıyor.
+
+*(Bu, `PlayerService.create`'in `DuplicateKeyException` ile düştüğü tuzağın aynısı.
+Genel kural 6. bölümde.)*
+
+### `@Entity` kullanmayan bir şey de kaldı
+
+`HealthService` hâlâ `JdbcClient` ile `SELECT 1` atıyor. Doğrusu bu: ortada bir tablo
+satırı yok, eşlenecek nesne yok. **JPA ile düz JDBC aynı projede yan yana durabilir**;
+soru "hangisi doğru" değil, "bu iş hangisine ait".
+
+### `equals` / `hashCode` — entity'lerde neden özel
+
+```java
+@Override public int hashCode() { return getClass().hashCode(); }   // sabit!
+```
+
+Tuhaf görünüyor ama kasıtlı. `hashCode` bir entity'nin **tüm yaşamı boyunca** aynı
+kalmalı — id atanmadan önce de. `id.hashCode()` yazsaydık, bir `Set`'e koyduğun entity
+kaydedilir kaydedilmez hash'i değişir ve koleksiyon onu kaybederdi.
+
+`equals` ise sadece anahtara bakıyor. Değişebilen alanlara bakan bir `equals`, birisi
+ismi değiştirdiği anda entity'nin kimliğini değiştirmiş olurdu.
 ---
 
 ## 3. Spring'in sihri: Bean'ler ve Dependency Injection
@@ -209,16 +222,35 @@ verip nesneyi kuruyorum."
 > Eski eğitimlerde `@Autowired` ile alan enjeksiyonu görürsün. Artık önerilmiyor; tek
 > yapıcı varsa `@Autowired` yazmana bile gerek yok.
 
-### `JdbcClient` nereden geldi?
+### Repository'ler nereden geliyor?
 
-1. `application.properties` → `spring.datasource.url/username/password`
-2. Spring Boot bunu görüp bir **`DataSource`** bean'i üretir (HikariCP bağlantı havuzu)
-3. `spring-boot-starter-jdbc` bağımlılığı var → `DataSource`'tan bir **`JdbcClient`** üretir
-4. Repository onu ister, Spring verir
+`PlayerProfileRepository` bir **arayüz**; gövdesi yok, `new` ile üretilmiyor. Zincir:
 
-Buna **auto-configuration** denir: "şu bağımlılık + şu ayar → şu bean'ler". Spring Boot'un
-asıl gücü budur. JPA'ya geçince aynı mekanizma `EntityManager` ve `JpaRepository`
-implementasyonlarını üretecek.
+1. `application.properties` → `spring.datasource.*`
+2. Spring Boot bir **`DataSource`** üretir (HikariCP bağlantı havuzu)
+3. `spring-boot-starter-data-jpa` var → `EntityManagerFactory` kurulur, `@Entity`
+   sınıfları taranır
+4. Spring Data açılışta repository arayüzlerini bulur ve **her biri için bir sınıf
+   üretir** — türetilmiş metotların SQL'ini metot adından, `@Query`'lerinkini
+   anotasyondan
+5. Servis onu ister, Spring verir
+
+Buna **auto-configuration** denir: "şu bağımlılık + şu ayar → şu bean'ler". Spring
+Boot'un asıl gücü budur.
+
+Bir de şu ayar var, mentörün soracağı türden:
+
+```properties
+spring.jpa.hibernate.ddl-auto=validate   # şemayı Flyway kurar, Hibernate sadece denetler
+spring.jpa.open-in-view=false            # varsayılan açık; kapattık
+```
+
+`validate`: Hibernate entity'lerle gerçek şemayı karşılaştırır ve uyuşmazsa **açılmaz**.
+Bir eşleme hatasını kullanıcıdan önce açılışta yakalamak her zaman daha ucuz.
+
+`open-in-view`: varsayılan olarak açıktır ve isteğin tamamı boyunca bir veritabanı
+oturumunu açık tutar, ki cevap yazılırken lazy bir ilişki hâlâ yüklenebilsin. Sorguların
+gerçekte nerede çalıştığını gizler ve bağlantıyı gereğinden çok daha uzun tutar.
 
 ---
 
@@ -352,6 +384,30 @@ Buna paralel iki doğrulama katmanı var:
   tetiklenir, kod servise **hiç girmez**
 - **İş kuralı** → serviste elle, çünkü birden fazla alanı karşılaştırıyor
 
+### Spring'in kendi istisnaları — düzeltilen gerçek bir hata
+
+`ApiExceptionHandler` bir de `ResponseEntityExceptionHandler`'ı genişletiyor. Bu süs
+değil: Spring MVC, bir isteğin sıradan yollarla yanlış olması için kendi istisnalarını
+fırlatır — bilinmeyen yol, endpoint'in sunmadığı bir fiil, okunamayan gövde, kabul
+edilmeyen içerik tipi.
+
+Taban sınıf olmadan aşağıdaki `Exception` yakalayıcısı bunların **hepsini** yutuyordu:
+
+| İstek | Dönmeli | Dönüyordu |
+|---|---|---|
+| Yanlış yazılmış URL | `404` | **`500`** |
+| Yanlış method | `405` | **`500`** |
+| Yanlış Content-Type | `415` | **`500`** |
+| Bozuk JSON | `400` | **`500`** |
+
+Üstelik her biri `ERROR` seviyesinde loglanıyordu — `/wp-admin` arayan bir bot hata
+logunu hiçbir şeye dair kayıtlarla dolduruyordu. Şimdi taban sınıf doğru status'ları
+veriyor, bunlar `debug` seviyesinde loglanıyor, ve `Exception` yakalayıcısı asıl işine
+bakıyor: **gerçekten öngörmediğimiz hatalar.**
+
+Ders genel: **yakalama zincirinin en altına `Exception` koyduğunda, üstünde çerçevenin
+kendi istisnalarını doğru ele alan bir katman olduğundan emin ol.**
+
 ### `ProblemDetail`
 
 Hata gövdeleri RFC 9457 formatında:
@@ -451,48 +507,78 @@ ve **satır döndürmeyerek** haber veriyor.
 `applyName` hâlâ `DuplicateKeyException` yakalıyor — orada güvenli, çünkü ondan sonra
 hiçbir şey çalışmıyor.
 
-### `PlayerRepository` — SQL'in yeri
+### Repository'ler — üç farklı sorgu tekniği
 
+`LeaderboardEntryRepository` bu projenin en öğretici dosyası: dört sorgu, dört farklı yol,
+ve her biri farklı bir sebeple seçilmiş.
+
+**1. Türetilmiş** — Spring Data metot adını okuyup SQL'i kendi yazıyor:
 ```java
-public Optional<Player> find(UUID playerId) {
-    return db.sql("SELECT ... FROM player_profile WHERE player_id = :id")
-            .param("id", playerId)
-            .query((rs, rowNum) -> new Player(...))
-            .optional();
-}
+Optional<PlayerProfile> findByDeviceId(String deviceId);   // gövde yok, anotasyon yok
 ```
 
-`JdbcClient` zinciri:
-
-| Parça | İşi |
-|---|---|
-| `.sql("...")` | Sorgu metni. `:id` = **isimli parametre** |
-| `.param("id", v)` | Parametreyi bağla |
-| `.query(RowMapper)` | Her satırı nesneye çevir |
-| `.optional()` / `.list()` / `.single()` | 0-1 satır / N satır / tam 1 satır |
-| `.update()` | Yazma. **Etkilenen satır sayısını** döndürür |
-
-**`:id` neden şart — SQL Injection.** Şunu asla yapma:
-
+**2. Skaler JPQL** — sadece bir kolon lazımsa entity yüklemenin anlamı yok:
 ```java
-db.sql("SELECT * FROM player_profile WHERE device_id = '" + deviceId + "'")   // TEHLİKELİ
+@Query("SELECT e.survivedSeconds FROM LeaderboardEntry e WHERE e.playerId = :playerId AND e.mode = :mode")
+Optional<Double> findPersonalBest(...);
 ```
 
-Kullanıcı `'; DROP TABLE player_profile; --` yollarsa tablo gider. İsimli parametrede
-sürücü değeri **sorgu metnine karıştırmaz**, ayrı kanaldan gönderir — değer ne olursa
-olsun veri kalır, komut olamaz.
+**3. JPQL constructor projeksiyonu** — sonucu doğrudan bir `record`'a döküyor:
+```java
+@Query("""
+    SELECT new com.tarikusta.spacesurvivors.leaderboard.BoardRow(
+               p.displayName, e.survivedSeconds, e.kills, e.reachedLevel)
+      FROM LeaderboardEntry e
+      JOIN PlayerProfile p ON p.playerId = e.playerId
+     WHERE e.mode = :mode
+     ORDER BY e.survivedSeconds DESC, e.achievedAt ASC
+    """)
+List<BoardRow> topEntries(String mode, Pageable limit);
+```
+Hiçbir entity yüklenmiyor ve tablonun göstermediği hiçbir kolon çekilmiyor — `player_id`
+ve `device_id` veritabanından hiç çıkmıyor. `JOIN ... ON`, sadece tek bir sorgunun
+kullanacağı bir `@ManyToOne` uydurmayı gereksiz kılıyor.
 
-**`.update()`'in dönüş değeri = optimistic locking.** `ProgressRepository.update`:
-
+**4. Native** — JPA'nın ifade edemediği iki şey için:
 ```sql
-UPDATE player_progress
-   SET progress_data = CAST(:data AS jsonb), version = version + 1
- WHERE player_id = :id AND version = :v
+ON CONFLICT (player_id, mode) DO UPDATE SET ...   -- upsert
+(SELECT count(*) + 1 FROM leaderboard o WHERE ...) AS rank   -- korelasyonlu alt sorgu
 ```
 
-Başkası araya girip sürümü değiştirdiyse `WHERE` hiçbir satıra uymaz → 0 satır → çakışma.
-Kilit almadık, bekleme yok. Adı bu yüzden **optimistic**: "muhtemelen çakışma olmaz,
-olursa fark ederim." *(JPA'ya geçince bunu `@Version` devralacak.)*
+> **Karma kullanım normaldir.** "Her şey JPA olmalı" diye bir kural yok; veritabanının
+> JPA'da karşılığı olmayan bir yeteneği varsa native sorgu doğru araçtır.
+
+### `JpaRepository` her zaman doğru taban değil
+
+```java
+public interface LeaderboardEntryRepository
+        extends Repository<LeaderboardEntry, LeaderboardEntryId> {   // JpaRepository DEĞİL
+```
+
+`JpaRepository`'yi genişletseydi `save(entity)`, `deleteAll()`, `findAll()` gibi onlarca
+metot miras alırdı. Sorun şu: **bir leaderboard satırı yalnızca `saveBest` ile
+yazılmalı**, çünkü "sadece rekoru geçerse" kuralını o uyguluyor. Miras alınan bir
+`save(entity)` bir oyuncunun rekorunu daha kötü bir run ile sessizce ezerdi ve tip sistemi
+buna itiraz etmezdi.
+
+Çıplak `Repository` işaretleyici arayüzü sadece bizim yazdığımız dört metodu bırakıyor.
+**Repository, çerçevenin üretebildiği her işlemi değil, alanın izin verdiği işlemleri
+açmalı.**
+
+*(`PlayerProfileRepository` ve `PlayerProgressRepository` `JpaRepository`'yi genişletiyor,
+çünkü onlar `findById` / `save` / `saveAndFlush` metotlarını gerçekten kullanıyor.)*
+
+### `@Modifying`'in iki bayrağı
+
+```java
+@Modifying(flushAutomatically = true, clearAutomatically = true)
+```
+
+Native bir yazma, Hibernate'in persistence context'inin arkasından veritabanına gider.
+`flushAutomatically` bekleyen değişiklikleri önce dışarı iter; `clearAutomatically`
+sonrasında context'i boşaltır, ki **hemen ardından yapılan okuma o satırı görsün**, önbelleğe
+alınmış bir "yok" cevabını değil. `PlayerService.create` tam olarak buna dayanıyor.
+
 
 ### `ProgressService` — sorgu sırasının önemi
 
@@ -594,38 +680,51 @@ sonucuna göre commit/rollback yapar.
 
 ## 8. Testler
 
-71 test var. Yapıyı doğru kurmanın somut karşılığı bu: servisler HTTP ve SQL bilmediği
-için **veritabanı olmadan, milisaniyelerde** test edilebiliyorlar.
+**98 test.** Yapıyı doğru kurmanın somut karşılığı bu: servisler HTTP ve SQL bilmediği
+için veritabanı olmadan, milisaniyelerde test edilebiliyorlar.
 
 | Sınıf | Ne test ediyor | Nasıl |
 |---|---|---|
-| `LeaderboardServiceTest` | daha iyi/kötü/eşit run, mod normalizasyonu, hile eşiği, sıralama, limit | Mockito sahte repository |
+| `LeaderboardServiceTest` | daha iyi/kötü/eşit run, mod normalizasyonu, hile eşiği, sıralama, limit | Mockito |
 | `PlayerServiceTest` | isim kuralları, ad üretimi, **iki yarış senaryosu** | Mockito |
-| `DeviceAuthFilterTest` | header ayrıştırma, IP doğrulama, `401`, `/health` muafiyeti | `MockHttpServletRequest` |
-| `ProgressControllerTest` | status eşlemeleri (200/404/409/413/400) | `@WebMvcTest` — sadece web katmanı |
+| `DeviceAuthFilterTest` | header ayrıştırma, IP doğrulama, `401`, muaf yollar | `MockHttpServletRequest` |
+| `ProgressControllerTest` | status eşlemeleri (200/404/409/413/400) | `@WebMvcTest` |
+| `ApiExceptionHandlerTest` | 404/405/415/400 — hepsi eskiden `500` dönüyordu | `@WebMvcTest` |
+| `PlayerProfileRepositoryTest` | `ON CONFLICT`, harf duyarsız benzersizlik, touch throttle | **gerçek Postgres** |
+| `PlayerProgressRepositoryTest` | jsonb gidiş-dönüşü, `@Version`, bayat yazım | **gerçek Postgres** |
+| `LeaderboardEntryRepositoryTest` | upsert, JPQL join, rank tutarlılığı | **gerçek Postgres** |
+| `OpenApiDocsTest` | üretilen dokümanın API'yi gerçekten anlatması | `@SpringBootTest` |
 
-`@SpringBootTest` (tüm context, yavaş) ile `@WebMvcTest` (sadece web dilimi, hızlı)
-farkını görmek için ikisi de var.
+Üç tür test bir arada: **birim** (mock, DB yok), **dilim** (`@WebMvcTest`, sadece web
+katmanı), **entegrasyon** (`@SpringBootTest`, gerçek veritabanı). Hangisinin ne zaman
+doğru olduğunu görmek için üçü de var.
 
-**Bir test benim yanlış varsayımımı yakaladı:** bozuk bir IP header'ında `null`
-döneceğini sanmıştım, kod soket adresine geri düşüyordu — ki daha doğrusu o. Testi
-düzelttim, kodu değil. Testin işi budur.
+### Testlerin gerçekten yakaladıkları
 
-**Eksik olan: repository testleri.** Optimistic lock ve upsert davranışı ancak gerçek
-Postgres'e karşı doğrulanabilir. Testcontainers ile yazılmalı, henüz yok.
+Bunlar teorik değil — hepsi yazılırken çıktı:
 
+1. **Bozuk IP header'ında `null` döneceğini sanmıştım**; kod soket adresine geri
+   düşüyordu, ki daha doğrusu o. **Testi düzelttim, kodu değil.**
+2. **`updated_at` trigger'ı geriye alınamıyor.** Throttle testi yazarken çıktı: trigger
+   her güncellemede `now()` basıyor, satırı eskitmeye çalışan güncelleme dahil. Kolonun
+   var olma sebebi bu.
+3. **`/v3/api-docs` `401` dönüyordu.** OpenAPI testi ilk çalıştırmada yakaladı: filtre
+   her yolu koruyunca, hangi kimlik bilgisinin gönderileceğini anlatan dokümanı okumak
+   için o kimlik bilgisini zaten bilmen gerekiyordu.
+
+**Hâlâ eksik: Testcontainers.** Entegrasyon testleri yerel Postgres'e bağlı — CI'da
+çalışmaz. Doğrusu her koşuda bir kapsayıcı başlatmak.
 ---
 
 ## 9. Bu projede *kullanmadığımız* şeyler
 
 | Şey | Neden yok |
 |---|---|
-| **JPA / `@Entity`** | Şimdilik. Mentör kararıyla geçilecek — 2. bölüm |
+
 | **Lombok** (`@Data`, `@Getter`) | Java `record`'ları aynı işi dille yapıyor |
-| **Spring Security** | Şimdilik dev-auth yeterli. Gerçek auth gelince |
 | **`@Autowired` alan enjeksiyonu** | Constructor injection tercih edildi |
 | **Servis arayüzleri** (`XService` + `XServiceImpl`) | Tek implementasyon varken gereksiz katman |
-| **OpenAPI / Swagger** | Eksik, eklenmeli |
+| **Spring Security** | Şimdilik dev-auth yeterli. Gerçek auth gelince |
 
 Son maddeyi açayım: eski Java projelerinde her servisin bir `interface`'i ve bir `Impl`'i
 olurdu. Sebebi eski test araçlarının sınıfları taklit edememesiydi. Modern Mockito
@@ -655,8 +754,9 @@ Arayüz, **gerçekten birden fazla implementasyon olduğunda** açılır: Unity 
 
 ## 11. Sonraki okumalar
 
-- **JPA / Spring Data** — sıradaki büyük adım
-- **Testcontainers** — repository testleri için
+- **Testcontainers** — entegrasyon testlerini yerel Postgres'ten kurtarmak için
+- **JPA ilişkileri** (`@OneToMany`, `@ManyToOne`) — bu projede hiç ihtiyaç olmadı, ama
+  gerçek bir nesne grafiğinde işin merkezi orası
 - **Spring Security** — gerçek kimlik doğrulama geldiğinde
 - **Profiller** — `application-local.properties` zaten kullanıyoruz, prod'da genişleyecek
 
