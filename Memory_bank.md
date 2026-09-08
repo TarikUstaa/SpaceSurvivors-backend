@@ -6,7 +6,8 @@ Decision log for `~/SpaceSurvivors-backend`. Mirrors the Unity repo's own
 **What belongs here:** decisions and the reasoning behind them — the "why" that the
 code itself cannot tell you. Phase log with commit hashes. Open questions.
 **What does not:** how the code works (that is `docs/ogrenme-rehberi.md`), the API
-shape (`api-contract.md` — to be regenerated), or anything git history already says.
+shape (springdoc serves it live at `/v3/api-docs` and `/swagger-ui.html`), or anything
+git history already says.
 
 ---
 
@@ -24,6 +25,49 @@ as the code.
 
 ---
 
+## Current state — 2026-09-08
+
+Read this first. Everything below is built, tested and pushed.
+
+**Learning arrangement:** a separate AI assistant is walking Tarik through this codebase
+for the learning goal; another (this one) does the development. **This file plus
+`docs/ogrenme-rehberi.md` and `docs/savunma-notlari.md` are the shared source of truth** —
+keep them current so the teaching side is never working from a stale picture.
+
+- **On GitHub, private:** `github.com/TarikUstaa/SpaceSurvivors-backend`, branch `main`,
+  every commit authored `tusta <tarikusta09@gmail.com>`. Sibling game repo:
+  `github.com/TarikUstaa/SpaceSurvivors`. First push 2026-09-08; history was rewritten to
+  the one author and the filter-branch backups pruned.
+- **Endpoints, all live, all behind a JWT (`Authorization: Bearer <token>`) except the
+  public ones:** `POST /v1/auth/token` (public) · `GET|PUT /v1/progress` ·
+  `GET|PATCH /v1/player` · `GET|POST /v1/leaderboard` · `GET /health` (public) ·
+  `/v3/api-docs` + `/swagger-ui.html` (public).
+- **Persistence:** all three tables are JPA `@Entity`. Flyway `V1` (schema) + `V2`
+  (`device_secret_hash`). `spring.jpa.hibernate.ddl-auto=validate` — Flyway owns the schema,
+  Hibernate only checks the entities match.
+- **Auth:** device secret (BCrypt hash in `player_profile.device_secret_hash`) exchanged at
+  `POST /v1/auth/token` for a 1-hour HS256 JWT whose subject is `player_id`. Spring Security
+  resource server verifies the signature before any controller runs. `@CurrentPlayer UUID`
+  gives a controller the caller.
+- **Tests:** `./mvnw test` → **88 green** across 11 classes — unit, `@WebMvcTest` slices,
+  real-Postgres repository tests, and 3 integration tests. Bound to the local DB
+  (no Testcontainers yet).
+- **Postman:** `docs/SpaceSurvivors.postman_collection.json` — 6 resource folders,
+  30 requests, 56 assertions, self-verifying and re-runnable (`runId`-derived device ids).
+  `newman run` green; it caught D20.
+- **Runs from IntelliJ** (`SpacesurvivorsApplication` → Run), never `./mvnw spring-boot:run` —
+  a terminal server holds port 8080 and breaks Tarik's Run.
+
+### The immediate priority
+
+**Rate limiting on `POST /v1/auth/token`.** It runs BCrypt (deliberately ~100 ms) on every
+call with no ceiling — a denial-of-service lever, flagged in D19. Plan discussed, not
+started: Bucket4j, per-IP token bucket, a servlet filter ordered *before* Spring Security so
+a rejected request never reaches BCrypt; `429` + `Retry-After` + `ProblemDetail`. Scope is
+the auth endpoint only for now; a general per-IP limit can follow in the same filter.
+
+---
+
 ## History — how we got here
 
 An earlier attempt (Gradle + VS Code) was built and then **scrapped on 2026-09-04**:
@@ -33,9 +77,10 @@ That repo was deleted. Current repo starts at `d1f930b`.
 
 ---
 
-## Mentor review — 2026-09-07 (ACT ON THIS NEXT)
+## Mentor review — 2026-09-07 (all three items done)
 
 Tarik's mentor (25-30 years of Java) reviewed the code and asked for three things.
+All three landed; kept here because the reasoning is the record.
 
 **1. Use `JpaRepository`, not `JdbcClient`. — DONE** (`3386cd0`, `500a763`, `09731e8`). D2 is overturned. The technical
 case for `JdbcClient` was real but optimised for the wrong goal: this project exists for
@@ -78,14 +123,17 @@ build stayed green throughout. What it actually taught, beyond the syntax:
 
 Repository tests against real Postgres came with it — the gap the review flagged. 88 tests.
 
-**2. "Why is the parameter in a header?"** Because it is a credential, not a parameter:
-it applies to every endpoint uniformly, and query strings land in access logs, proxy
-logs and browser history. The likely real objection is the `X-` prefix, which RFC 6648
-retired in 2012. Move to `Authorization: Device <id>`, which also makes the Firebase swap
-a change of scheme rather than of header. **Not done.**
+**2. "Why is the parameter in a header?" — DONE** (`27747ef`, then absorbed by D19).
+Because it is a credential, not a parameter: it applies to every endpoint uniformly, and
+query strings land in access logs, proxy logs and browser history. The real objection was
+the `X-` prefix, which RFC 6648 retired in 2012. It moved to `Authorization: Device <id>`,
+then D19 replaced the whole scheme with `Authorization: Bearer <jwt>` — so the header is now
+exactly what every OAuth2 client already expects, and a Firebase swap later is `Device`/our
+JWT → Firebase's `Bearer`.
 
-**3. A Postman collection showing the project's flow** — the artefact he actually wants
-to see.
+**3. A Postman collection showing the project's flow — DONE** (`27747ef` first cut,
+`c48c22d` reorganised by resource and made self-verifying). 30 requests, 56 assertions,
+re-runnable. It immediately earned its keep by catching D20.
 
 ## Decisions
 
@@ -359,7 +407,10 @@ and retry. Not written yet — belongs to the Unity phase.
 
 ### D5 — Dev auth via `X-Dev-User` header, real auth deferred
 
-> *Header is now `X-Device-Id` and the filter is `DeviceAuthFilter` (D9). Everything below still holds.*
+> **Fully superseded by D19.** Real authentication exists now: signed JWT, Spring Security,
+> BCrypt device secret. `DevAuthFilter`/`DeviceAuthFilter` and the `Caller` record were
+> deleted. The "never expose beyond localhost" warning below no longer applies. Kept for the
+> record of why the seam was built the way it was — the swap did land in roughly one place.
 
 `DevAuthFilter` reads the header and puts `userId` on the request. Controllers read it
 with `@RequestAttribute`, so they do not know where it came from.
@@ -451,43 +502,55 @@ which happens at the end of every run.
 | — | `1eef668` | this file |
 | F5a | game repo `73e0ae1` | **Unity client connected.** `HttpProfileStore` / `ProfileMerge` / `BackendConfig` / `BackendBootstrap` + an editor settings window, all behind the game's existing `IProfileStore` seam. Verified end to end against this backend: the real save (wallet 481) now round-trips through `players`. |
 | F5b | game repo `6fe1eac` | **Leaderboard connected.** `HttpLeaderboardStore` posts finished runs to `/v1/scores`. Verified: upsert-if-better replaces the single row in place. `GET /v1/scores` still has no client — nothing in the game displays a board yet. |
-| F6 | (this change) | **Schema and layering rework** — see D9-D12. `users`+`players` became `player_profile`+`player_progress`; `player_id uuid` split from `device_id`; unique case-insensitive display names with `PATCH /v1/player`; `DevAuthFilter` became `DeviceAuthFilter` carrying a `Caller`; controllers reduced to delegation; `HealthService` added; endpoint renamed `/v1/profile` -> `/v1/progress`. DB dropped and rebuilt from the rewritten V1. Unity client updated (header, URL, wire field `profile` -> `progress`, full-GUID device id). 15 curl scenarios green. |
+| F6 | `c2debf8` … `5e1a62d` | **Schema and layering rework** — see D9-D12. `users`+`players` became `player_profile`+`player_progress`; `player_id uuid` split from `device_id`; unique case-insensitive display names with `PATCH /v1/player`; `DevAuthFilter` became `DeviceAuthFilter` carrying a `Caller`; controllers reduced to delegation; `HealthService` added; endpoint renamed `/v1/profile` -> `/v1/progress`. DB dropped and rebuilt from the rewritten V1. Unity client updated. 15 curl scenarios green. |
+| F7 | `4c8c907`, `0cd192e`, `582421a`, `8ecda15`, `df4ecae` | **Code review, round 1** — D13/D14. Three reproduced bugs fixed (concurrent first contact, `X-Forwarded-For`). HTTP types taken out of the services; controller response-building moved into DTOs; requests with no device id refused; the first real test suite added — the concurrency bug would have been caught by one `PlayerService` test. |
+| F8 | `13ebf47`, `6f70c66`, `27747ef`, `211455a` | **Mentor review recorded + acted on** — `docs/savunma-notlari.md` written; identity moved to `Authorization: Device <id>` (mentor item 2); first Postman collection. |
+| F9 | `3386cd0`, `500a763`, `09731e8`, `2519f4c` | **JPA migration** (mentor item 1). All three tables became `@Entity`, one table per commit so the build stayed green. Real-Postgres repository tests came with it. Schema untouched. See the mentor-review section for what it taught. |
+| F10 | `8bd461c`, `911e9bf`, `d47120b`, `fab803a` | **Code review, round 2** — D15-D18. `ResponseEntityExceptionHandler` under the catch-all; reads that were writing; a repository typed wider than the domain allows; `/v3/api-docs` was behind the credential it explains. |
+| F11 | `0ba4509`, `5935f34` | **Real authentication** — D19. `V2` adds `device_secret_hash`; Spring Security resource server; HS256 JWT with `player_id` as subject, which deleted the per-request device lookup entirely. `Authorization: Bearer`. Unity got `BackendSession` (token exchange, retries once on 401). |
+| F12 | `c48c22d`, `a1634c1` | Postman collection reorganised by resource and made self-verifying — it caught D20 (`inet` column broke every `PlayerProfile` update) on its first run. |
+| — | game `8655397` · backend `a1634c1` | **Both repos pushed to GitHub** (private). Authorship rewritten to the one author across all commits; filter-branch backups pruned after the push verified. |
 
-**Verification approach:** every phase curl-tested end to end against local Postgres
-(F2: 6 scenarios, F3: 15), test rows purged afterwards, then walked through in Postman
-by Tarik. Automated tests are still just the context-load smoke test — a gap, see below.
+**Verification approach:** `./mvnw test` (88 cases, all layers) is the automated net;
+`docs/SpaceSurvivors.postman_collection.json` run with `newman` is the end-to-end
+regression suite (56 assertions). Every phase was also walked through in Postman by Tarik.
+Twice an integration test found what a mocked one structurally could not (D20, and the
+`updated_at` trigger).
 
 ---
 
 ## Open / next
 
-1. **In-game profile screen** — nothing calls `PATCH /v1/player` yet, so every player keeps
-   their generated `UserNNNNNN`. The endpoint and its 400/409 answers are ready for it.
-2. **`country` has no source.** The column exists and stays NULL until a host or CDN supplies
-   a country header. Locally `last_ip` is always `::1`, so nothing can be derived from it.
-3. **IP is personal data.** Stored deliberately; it will need a purpose and a retention rule
-   (a "delete IPs older than N days" job) before this is public.
-4. **Postman collection** — the requests exist only as ad-hoc tabs. Worth saving as a
-   collection with a `{{baseUrl}}` variable.
-2. **Unity integration** — `HttpProfileStore` / `HttpLeaderboardStore` against the
-   existing `IProfileStore` / `ILeaderboardStore` seams in the game repo (commit
-   `149b032` there opened them). Offline-first: local cache is the source of truth,
-   sync in the background, merge on 409.
-3. **Display name** — D8, together with the Unity work.
-4. **Real tests.** Only `SpacesurvivorsApplicationTests` (context loads) exists. Worth
-   adding `@WebMvcTest` slices for the controllers and plain unit tests for
-   `ScoreService`'s rules. Deliberately skipped so far to keep the learning path linear.
-5. **Firebase auth** — replaces `DevAuthFilter`. Deferred by Tarik; console setup steps
-   are in `docs/firebase-setup.md` (from the scrapped repo — needs rewriting).
-6. **Least-privilege DB roles** — D3 debt, before deploy.
-7. **Azure deploy** — Postgres Flexible Server + Container App, secrets from Key Vault.
+*Priority order.*
+
+1. **Rate limiting** — the one open security item. See "Current state" above for the plan.
+2. **Testcontainers** — the repository and integration tests need a real Postgres and use
+   the local one, so they will not run in CI or on a fresh clone. `spring-boot-testcontainers`
+   + a `@ServiceConnection` Postgres container.
+3. **In-game profile screen** (Unity) — nothing calls `PATCH /v1/player`, so every player
+   keeps their generated `UserNNNNNN`. The endpoint and its 400/409 answers are ready.
+4. **Leaderboard screen** (Unity) — `GET /v1/leaderboard` has no client; nothing displays a
+   board.
+5. **`country` has no source.** The column stays NULL until a host or CDN supplies a country
+   header. Locally `last_ip` is always `::1`.
+6. **IP retention.** `last_ip` is personal data, stored deliberately; it needs a purpose and
+   a "delete IPs older than N days" job before this is public.
+7. **Least-privilege DB roles** — D3 debt, before any deploy.
+8. **Azure deploy** — Postgres Flexible Server + Container App, secrets from Key Vault.
+9. **Firebase auth** — optional now that D19 exists; it would add "recover my account on a
+   new phone". `player_id` stays stable, so still cheap to add. `docs/firebase-setup.md`
+   (from the scrapped repo) needs rewriting first.
 
 ## Local run
 
+Tarik runs the server from **IntelliJ** (`SpacesurvivorsApplication` → Run). Do not start it
+with `./mvnw spring-boot:run` — a terminal server holds port 8080 and breaks his Run.
+
 ```sh
-./mvnw spring-boot:run        # needs local Postgres up
-curl localhost:8080/health    # {"status":"UP","db":"UP"}
+curl localhost:8080/health    # {"status":"UP","db":"UP"} once it is up
+./mvnw test                   # 88 green, needs local Postgres
 ```
 
-DB: `spacesurvivors` on `localhost:5432`, role `ss_app` / `ss_app_local_dev`
-(dev-only password). Inspect with DBeaver.
+DB: `spacesurvivors` on `localhost:5432`, role `ss_app` / `ss_app_local_dev` (dev-only
+password, in the git-ignored `application-local.properties`; `JWT_SECRET` lives there too).
+Inspect with DBeaver.
