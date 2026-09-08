@@ -226,6 +226,15 @@ and a per-address limit is therefore shared by strangers — at one token per ho
 that reason.** It stops one machine, not a botnet, and it is the ceiling of what is possible
 before there is a real account to limit instead.
 
+**Measured on the running server, 2026-09-08.** An accepted request costs **~82 ms** — that
+is the BCrypt verify, and it confirms the estimate the whole design rests on. A refused one
+costs **~1.1 ms**, and that figure is the entire HTTP round trip, so the filter's own work is
+a fraction of it. Roughly **75x less CPU per refused request**, which is the number the
+feature exists to produce. A burst of 100 simultaneous requests to one address let through
+exactly 30 — the capacity, not 31 — so the bucket is precisely atomic under real Tomcat
+threads, and the concurrent first contact still created exactly one player row (D13 holds
+with the limiter in front of it).
+
 **Refusals are logged at debug, not warn.** Under the attack this defends against they arrive
 by the thousand, and D15 is the lesson about handled events flooding the error log. "How
 many" belongs in metrics, not in logging.
