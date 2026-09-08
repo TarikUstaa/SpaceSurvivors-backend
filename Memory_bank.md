@@ -49,9 +49,11 @@ keep them current so the teaching side is never working from a stale picture.
   `POST /v1/auth/token` for a 1-hour HS256 JWT whose subject is `player_id`. Spring Security
   resource server verifies the signature before any controller runs. `@CurrentPlayer UUID`
   gives a controller the caller.
-- **Tests:** `./mvnw test` → **88 green** across 11 classes — unit, `@WebMvcTest` slices,
-  real-Postgres repository tests, and 3 integration tests. Bound to the local DB
+- **Tests:** `./mvnw test` → **105 green** across 13 classes — unit, `@WebMvcTest` slices,
+  real-Postgres repository tests, and 4 integration tests. Bound to the local DB
   (no Testcontainers yet).
+- **Rate limiting:** `POST /v1/auth/token` is capped at 30/minute per address by a filter
+  ordered ahead of Spring Security, so a refused caller never reaches BCrypt (D21).
 - **Postman:** `docs/SpaceSurvivors.postman_collection.json` — 6 resource folders,
   30 requests, 56 assertions, self-verifying and re-runnable (`runId`-derived device ids).
   `newman run` green; it caught D20.
@@ -60,11 +62,13 @@ keep them current so the teaching side is never working from a stale picture.
 
 ### The immediate priority
 
-**Rate limiting on `POST /v1/auth/token`.** It runs BCrypt (deliberately ~100 ms) on every
-call with no ceiling — a denial-of-service lever, flagged in D19. Plan discussed, not
-started: Bucket4j, per-IP token bucket, a servlet filter ordered *before* Spring Security so
-a rejected request never reaches BCrypt; `429` + `Retry-After` + `ProblemDetail`. Scope is
-the auth endpoint only for now; a general per-IP limit can follow in the same filter.
+**Testcontainers.** The repository and integration tests talk to the developer's own
+Postgres, so they pass here and would fail on any machine that has not been set up by hand —
+no CI, no fresh clone. It is now the only thing between this repo and a build anyone can run.
+
+**Known stale doc:** `docs/ogrenme-rehberi.md` §4/§7/§9 still describe `DeviceAuthFilter`,
+`Caller` and `resolveOrCreate`, all deleted by D19. The teaching side reads that file — it
+needs rewriting to the JWT world before it is relied on.
 
 ---
 
@@ -138,6 +142,54 @@ re-runnable. It immediately earned its keep by catching D20.
 ## Decisions
 
 *Newest first. Superseded entries are kept — the reasoning is the record.*
+
+### D21 — rate limiting the token endpoint, ahead of the security chain (2026-09-08)
+
+Closes the open item D19 named. `POST /v1/auth/token` verifies a device secret with BCrypt,
+which is deliberately slow — roughly 100 ms of CPU, on purpose, so a stolen table of hashes
+is impractical to attack offline. That slowness is also a lever: the work is done whether or
+not the secret checks out, so a few hundred requests a second from one socket starves every
+real player, with no account and no valid credential needed.
+
+**bucket4j for the algorithm, caffeine for the storage.** Two libraries for one feature
+looks like a lot until you see they answer different questions. bucket4j counts tokens
+atomically while many threads draw on one bucket — the part not worth hand-writing. Caffeine
+bounds and expires the map of buckets, and **that bound is the same defence a second time**:
+a limiter that remembers every address forever converts a CPU exhaustion into a memory
+exhaustion. Eviction must never come sooner than a bucket refills, or forgetting a caller is
+indistinguishable from raising their limit — hence `retention() = window × 2`.
+
+**The ordering is the feature.** The filter registers at
+`SecurityFilterProperties.DEFAULT_FILTER_ORDER - 10`, ahead of Spring Security, so a refused
+caller costs a map lookup and nothing else. Put it after the security chain and it still
+answers 429 while no longer preventing the work it exists to prevent — it would look correct
+and protect nothing. `RateLimitFilterTest` asserts the constant; `RateLimitIntegrationTest`
+proves the filter is actually reached in the running chain, because a filter registered at
+the wrong order or not at all passes every isolated test. Same gap as D20.
+
+**Why the key is `getRemoteAddr()` and never `X-Forwarded-For`.** D14 said a client header
+is input, not fact. Here it is sharper: a new value in that header would be a new bucket, so
+trusting it does not merely record a false address, it removes the limit entirely. Behind a
+proxy we run, `server.forward-headers-strategy=framework` rewrites `getRemoteAddr` itself and
+leaves this code correct unchanged.
+
+**30 per minute, and the number is a judgement not a default.** One address can then buy 3
+seconds of BCrypt a minute, ~5% of a core, against a whole machine unlimited. The floor comes
+from the other direction: carriers put thousands of subscribers behind one address (CGNAT),
+and a per-address limit is therefore shared by strangers — at one token per hour per device,
+30/min carries ~1800 devices behind one address. **Per-address limiting is blunt for exactly
+that reason.** It stops one machine, not a botnet, and it is the ceiling of what is possible
+before there is a real account to limit instead.
+
+**Refusals are logged at debug, not warn.** Under the attack this defends against they arrive
+by the thousand, and D15 is the lesson about handled events flooding the error log. "How
+many" belongs in metrics, not in logging.
+
+**A trap found while building it.** `AuthenticationIntegrationTest` asks for a dozen tokens
+and was sitting just under the ceiling — passing, but the next auth test anyone added would
+have failed as a 429 unrelated to what they were testing. It now disables the limit
+explicitly. **A cross-cutting guard silently changes the meaning of every test that crosses
+it**; the tests for it belong in one place and out of everyone else's way.
 
 ### D20 — an inet column must be read-only to JPA (2026-09-07)
 
@@ -510,6 +562,7 @@ which happens at the end of every run.
 | F11 | `0ba4509`, `5935f34` | **Real authentication** — D19. `V2` adds `device_secret_hash`; Spring Security resource server; HS256 JWT with `player_id` as subject, which deleted the per-request device lookup entirely. `Authorization: Bearer`. Unity got `BackendSession` (token exchange, retries once on 401). |
 | F12 | `c48c22d`, `a1634c1` | Postman collection reorganised by resource and made self-verifying — it caught D20 (`inet` column broke every `PlayerProfile` update) on its first run. |
 | — | game `8655397` · backend `a1634c1` | **Both repos pushed to GitHub** (private). Authorship rewritten to the one author across all commits; filter-branch backups pruned after the push verified. |
+| F13 | (this change) | **Rate limiting** — D21. `POST /v1/auth/token` capped per address by a bucket4j token bucket in a bounded caffeine cache, in a filter ordered ahead of Spring Security so a refused caller never reaches BCrypt. 17 new tests, including one that proves the filter is actually reached in the running chain. |
 
 **Verification approach:** `./mvnw test` (88 cases, all layers) is the automated net;
 `docs/SpaceSurvivors.postman_collection.json` run with `newman` is the end-to-end
@@ -523,10 +576,12 @@ Twice an integration test found what a mocked one structurally could not (D20, a
 
 *Priority order.*
 
-1. **Rate limiting** — the one open security item. See "Current state" above for the plan.
-2. **Testcontainers** — the repository and integration tests need a real Postgres and use
+1. **Testcontainers** — the repository and integration tests need a real Postgres and use
    the local one, so they will not run in CI or on a fresh clone. `spring-boot-testcontainers`
    + a `@ServiceConnection` Postgres container.
+2. **`docs/ogrenme-rehberi.md` is a version behind** — §4/§7/§9 describe the pre-D19
+   identity chain that no longer exists. It is the teaching side's main text, so this is
+   not cosmetic.
 3. **In-game profile screen** (Unity) — nothing calls `PATCH /v1/player`, so every player
    keeps their generated `UserNNNNNN`. The endpoint and its 400/409 answers are ready.
 4. **Leaderboard screen** (Unity) — `GET /v1/leaderboard` has no client; nothing displays a

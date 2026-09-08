@@ -77,6 +77,23 @@
 			<artifactId>flyway-database-postgresql</artifactId>
 		</dependency>
 
+		<!--
+			Rate limiting, two halves of one job. bucket4j owns the token-bucket
+			algorithm — counting tokens atomically while many threads draw on the same
+			bucket is the part worth not hand-writing. caffeine owns the storage, with a
+			bound and an expiry, because a limiter that remembers every address forever
+			is itself a way to exhaust memory. See web/RateLimitConfig.
+		-->
+		<dependency>
+			<groupId>com.bucket4j</groupId>
+			<artifactId>bucket4j-core</artifactId>
+			<version>8.10.1</version>
+		</dependency>
+		<dependency>
+			<groupId>com.github.ben-manes.caffeine</groupId>
+			<artifactId>caffeine</artifactId>
+		</dependency>
+
 		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
