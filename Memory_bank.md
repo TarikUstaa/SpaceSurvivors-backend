@@ -55,6 +55,9 @@ keep them current so the teaching side is never working from a stale picture.
   local Postgres, no `application-local.properties`. About 19s end to end.
 - **Rate limiting:** `POST /v1/auth/token` is capped at 30/minute per address by a filter
   ordered ahead of Spring Security, so a refused caller never reaches BCrypt (D21).
+- **CI:** `.github/workflows/ci.yml` runs `./mvnw test` on every push and pull request —
+  GitHub runners have Docker, so Testcontainers works with nothing added. ~1 min a run.
+  First green run 2026-09-08, 110 tests.
 - **Postman:** `docs/SpaceSurvivors.postman_collection.json` — 6 resource folders,
   30 requests, 56 assertions, self-verifying and re-runnable (`runId`-derived device ids).
   `newman run` green; it caught D20.
@@ -67,6 +70,9 @@ keep them current so the teaching side is never working from a stale picture.
 critical flow), §7 and §9 still describe `DeviceAuthFilter`, `Caller` and `resolveOrCreate`
 — all deleted by D19. It is the teaching side's main text, so this is not cosmetic: it
 would teach an identity chain that no longer exists.
+
+Tarik has deferred it once already. It stays first because it is a correctness problem in
+the material the teaching side works from, not because it is urgent.
 
 ---
 
@@ -625,7 +631,8 @@ which happens at the end of every run.
 | F12 | `c48c22d`, `a1634c1` | Postman collection reorganised by resource and made self-verifying — it caught D20 (`inet` column broke every `PlayerProfile` update) on its first run. |
 | — | game `8655397` · backend `a1634c1` | **Both repos pushed to GitHub** (private). Authorship rewritten to the one author across all commits; filter-branch backups pruned after the push verified. |
 | F13 | `a31f569` | **Rate limiting** — D21. `POST /v1/auth/token` capped per address by a bucket4j token bucket in a bounded caffeine cache, in a filter ordered ahead of Spring Security so a refused caller never reaches BCrypt. 17 new tests, including one that proves the filter is actually reached in the running chain. |
-| F14 | (this change) | **Testcontainers** — D22. Every database test now starts a disposable Postgres 18 rather than using the developer's own, so `./mvnw test` needs only Docker. `@DatabaseTest` composes the setup; `TestDatabaseWiringTest` proves the suite is really on the container and not falling back to localhost. |
+| F14 | `d3e4763`, `c5ca96e`, `5129677` | **Testcontainers** — D22. Every database test now starts a disposable Postgres 18 rather than using the developer's own, so `./mvnw test` needs only Docker. `@DatabaseTest` composes the setup; `TestDatabaseWiringTest` proves the suite is really on the container and not falling back to localhost. |
+| F15 | `920855f` | **CI** — `.github/workflows/ci.yml`, `./mvnw test` on every push and PR. Portable only because of D22. First green run: 110 tests on a GitHub runner. Adding a workflow needed the `workflow` scope on the push token. |
 
 **Verification approach:** `./mvnw test` (88 cases, all layers) is the automated net;
 `docs/SpaceSurvivors.postman_collection.json` run with `newman` is the end-to-end
@@ -641,10 +648,8 @@ Twice an integration test found what a mocked one structurally could not (D20, a
 
 1. **`docs/ogrenme-rehberi.md` is a version behind** — §4/§7/§9 describe the pre-D19
    identity chain that no longer exists. It is the teaching side's main text, so this is
-   not cosmetic.
-2. **No CI yet.** The suite is finally portable (D22), so a GitHub Actions workflow running
-   `./mvnw test` on every push is now a few lines and would mean something.
-3. **In-game profile screen** (Unity) — nothing calls `PATCH /v1/player`, so every player
+   not cosmetic. (Deferred once by Tarik.)
+2. **In-game profile screen** (Unity) — nothing calls `PATCH /v1/player`, so every player
    keeps their generated `UserNNNNNN`. The endpoint and its 400/409 answers are ready.
 4. **Leaderboard screen** (Unity) — `GET /v1/leaderboard` has no client; nothing displays a
    board.
