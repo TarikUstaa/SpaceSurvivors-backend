@@ -1,13 +1,12 @@
 package com.tarikusta.spacesurvivors.auth;
 
+import com.tarikusta.spacesurvivors.support.DatabaseTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
@@ -28,13 +27,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * unauthenticated call is refused, that a token is granted only for a matching secret, and
  * that a token cannot simply be written by hand.</p>
  */
-@SpringBootTest
+@DatabaseTest
 @AutoConfigureMockMvc
-// The rate limiter guards this very endpoint, and these tests ask it for a token a dozen
-// times over. Left on, the suite would sit just under the ceiling and the next test anyone
-// adds here would fail as a 429 that has nothing to do with what they were testing. The
-// limit has its own tests; this one is about authentication.
-@TestPropertySource(properties = "app.ratelimit.enabled=false")
 @Transactional
 class AuthenticationIntegrationTest {
 

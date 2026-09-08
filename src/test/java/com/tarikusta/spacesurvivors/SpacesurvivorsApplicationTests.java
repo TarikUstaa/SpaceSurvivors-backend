@@ -1,9 +1,9 @@
 package com.tarikusta.spacesurvivors;
 
+import com.tarikusta.spacesurvivors.support.DatabaseTest;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
+@DatabaseTest
 class SpacesurvivorsApplicationTests {
 
 	@Test

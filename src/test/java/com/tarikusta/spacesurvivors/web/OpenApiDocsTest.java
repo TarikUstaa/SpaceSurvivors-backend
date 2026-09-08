@@ -1,9 +1,9 @@
 package com.tarikusta.spacesurvivors.web;
 
+import com.tarikusta.spacesurvivors.support.DatabaseTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -17,7 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>Worth a test because the document is derived from the controllers: if an endpoint is
  * renamed or removed, this notices, where a hand-written spec would simply go stale.</p>
  */
-@SpringBootTest
+@DatabaseTest
 @AutoConfigureMockMvc
 class OpenApiDocsTest {
 

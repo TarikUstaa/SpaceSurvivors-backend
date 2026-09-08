@@ -1,9 +1,9 @@
 package com.tarikusta.spacesurvivors.player;
 
+import com.tarikusta.spacesurvivors.support.DatabaseTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * actually emits for a {@link PlayerProfile} had never once been sent to Postgres. It
  * turned out not to work, and only an integration test could have said so.</p>
  */
-@SpringBootTest
+@DatabaseTest
 @Transactional
 class PlayerRenameIntegrationTest {
 

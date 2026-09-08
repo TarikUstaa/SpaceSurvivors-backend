@@ -1,9 +1,9 @@
 package com.tarikusta.spacesurvivors.web;
 
+import com.tarikusta.spacesurvivors.support.DatabaseTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -30,7 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>The capacity is dropped to two here rather than firing thirty requests at the real
  * setting, so the test states its intent in one line and stays fast.</p>
  */
-@SpringBootTest
+@DatabaseTest
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
         "app.ratelimit.enabled=true",

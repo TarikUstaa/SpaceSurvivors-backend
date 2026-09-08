@@ -1,9 +1,9 @@
 package com.tarikusta.spacesurvivors.player;
 
+import com.tarikusta.spacesurvivors.support.DatabaseTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * A mock cannot say anything about {@code ON CONFLICT}, a case-insensitive unique index,
  * or an interval comparison — those are the database's behaviour, not ours.
  */
-@SpringBootTest
+@DatabaseTest
 @Transactional
 class PlayerProfileRepositoryTest {
 

@@ -49,9 +49,10 @@ keep them current so the teaching side is never working from a stale picture.
   `POST /v1/auth/token` for a 1-hour HS256 JWT whose subject is `player_id`. Spring Security
   resource server verifies the signature before any controller runs. `@CurrentPlayer UUID`
   gives a controller the caller.
-- **Tests:** `./mvnw test` → **105 green** across 13 classes — unit, `@WebMvcTest` slices,
-  real-Postgres repository tests, and 4 integration tests. Bound to the local DB
-  (no Testcontainers yet).
+- **Tests:** `./mvnw test` → **108 green** across 14 classes — unit, `@WebMvcTest` slices,
+  repository tests and 5 integration tests. Every database test runs against a throwaway
+  Postgres 18 container (D22), so the suite needs **Docker running** and nothing else — no
+  local Postgres, no `application-local.properties`. About 19s end to end.
 - **Rate limiting:** `POST /v1/auth/token` is capped at 30/minute per address by a filter
   ordered ahead of Spring Security, so a refused caller never reaches BCrypt (D21).
 - **Postman:** `docs/SpaceSurvivors.postman_collection.json` — 6 resource folders,
@@ -62,13 +63,10 @@ keep them current so the teaching side is never working from a stale picture.
 
 ### The immediate priority
 
-**Testcontainers.** The repository and integration tests talk to the developer's own
-Postgres, so they pass here and would fail on any machine that has not been set up by hand —
-no CI, no fresh clone. It is now the only thing between this repo and a build anyone can run.
-
-**Known stale doc:** `docs/ogrenme-rehberi.md` §4/§7/§9 still describe `DeviceAuthFilter`,
-`Caller` and `resolveOrCreate`, all deleted by D19. The teaching side reads that file — it
-needs rewriting to the JWT world before it is relied on.
+**`docs/ogrenme-rehberi.md` is a version behind.** §4 (which it calls the project's most
+critical flow), §7 and §9 still describe `DeviceAuthFilter`, `Caller` and `resolveOrCreate`
+— all deleted by D19. It is the teaching side's main text, so this is not cosmetic: it
+would teach an identity chain that no longer exists.
 
 ---
 
@@ -142,6 +140,53 @@ re-runnable. It immediately earned its keep by catching D20.
 ## Decisions
 
 *Newest first. Superseded entries are kept — the reasoning is the record.*
+
+### D22 — tests bring their own database (2026-09-08)
+
+The suite used to talk to the Postgres on the developer's laptop, with credentials from
+`application-local.properties` — a file that is git-ignored and therefore exists on exactly
+one machine. A fresh clone could not run `./mvnw test` at all, which is the same as saying
+there could be no CI. It was also shared mutable state: whatever the last manual poke at the
+running server had done was still sitting in the database the tests then asserted against.
+
+Each test context now starts its own Postgres container and throws it away afterwards.
+`@ServiceConnection` is what makes this cheap — Spring Boot reads the connection details off
+the container bean, so there is no second copy of the port and password to drift out of
+step. **Docker is now a prerequisite for the test suite**, which is the price paid.
+
+**A container that starts empty means Flyway runs from nothing on every run.** That is worth
+more than the portability: the migrations are now exercised the way a new deployment meets
+them, instead of being validated against a database somebody migrated by hand weeks ago.
+
+**`TestDatabaseWiringTest` exists because its absence would be invisible.** This machine has
+a Postgres on the usual port with the right schema in it. Had `@ServiceConnection` been
+misconfigured and the datasource quietly fallen back to `localhost:5432`, every other test
+would still have passed — against the wrong database, on one laptop, surfacing only as a
+total failure on the first machine that lacked one. A green suite would have been evidence
+of nothing. So the test asserts the JDBC URL is the container's ephemeral port and not 5432.
+Third time this pattern has earned its place, after D20 and D21: **when a piece of wiring is
+what makes something real, assert the wiring, because the behaviour it enables can be
+produced by accident.**
+
+**Two renames that cost time.** Testcontainers 2.x prefixed every module artifact with
+`testcontainers-`, so `org.testcontainers:postgresql` from every tutorial does not resolve,
+and `PostgreSQLContainer` moved from `org.testcontainers.containers` to
+`org.testcontainers.postgresql` (and stopped being generic). Same shape of trap as the
+Spring Boot 4 starter renames.
+
+**Why `application-test.properties` and not `application.properties`.** A file named
+`application.properties` under `src/test/resources` **shadows** the main one rather than
+adding to it, so the application would silently lose its JPA, Flyway and Actuator settings.
+A profile-specific file layers on top, and `@ActiveProfiles("test")` selects it in place of
+`local` — which is the half of the fix that removes the dependency on the git-ignored file.
+
+The rate limiter is off by default for tests there, rather than per-class. A cross-cutting
+guard that is on during unrelated tests silently caps what those tests may do (D21).
+
+**One unexplained flake.** During this work `AuthenticationIntegrationTest` failed once, one
+test of nine, in a full-suite run. It has not reproduced in the five full runs since, and
+the class passes alone. Recorded rather than dismissed: unreproducible is not the same as
+fixed, and if it returns this is the first place to look.
 
 ### D21 — rate limiting the token endpoint, ahead of the security chain (2026-09-08)
 
@@ -528,6 +573,14 @@ which happens at the end of every run.
   Flyway is `spring-boot-starter-flyway`; the single `spring-boot-starter-test` is now
   per-module (`-webmvc-test`, `-jdbc-test`, …). Tutorials written for 3.x will not
   match `pom.xml`.
+- **Testcontainers 2.x renamed every module artifact** with a `testcontainers-` prefix,
+  so `org.testcontainers:postgresql` does not resolve; it is
+  `org.testcontainers:testcontainers-postgresql`. `PostgreSQLContainer` also moved from
+  `org.testcontainers.containers` to `org.testcontainers.postgresql` and is no longer
+  generic (`PostgreSQLContainer`, not `PostgreSQLContainer<?>`).
+- **`src/test/resources/application.properties` shadows the main one**, it does not merge
+  with it. Test-only settings belong in a profile-specific file such as
+  `application-test.properties`, selected with `@ActiveProfiles`.
 - **Spring Boot 4 ships Jackson 3.** Package moved: `com.fasterxml.jackson.databind`
   → `tools.jackson.databind` (annotations stayed under `com.fasterxml`). Every
   `ObjectMapper` / `JsonNode` import in this repo uses the new namespace.
@@ -562,7 +615,8 @@ which happens at the end of every run.
 | F11 | `0ba4509`, `5935f34` | **Real authentication** — D19. `V2` adds `device_secret_hash`; Spring Security resource server; HS256 JWT with `player_id` as subject, which deleted the per-request device lookup entirely. `Authorization: Bearer`. Unity got `BackendSession` (token exchange, retries once on 401). |
 | F12 | `c48c22d`, `a1634c1` | Postman collection reorganised by resource and made self-verifying — it caught D20 (`inet` column broke every `PlayerProfile` update) on its first run. |
 | — | game `8655397` · backend `a1634c1` | **Both repos pushed to GitHub** (private). Authorship rewritten to the one author across all commits; filter-branch backups pruned after the push verified. |
-| F13 | (this change) | **Rate limiting** — D21. `POST /v1/auth/token` capped per address by a bucket4j token bucket in a bounded caffeine cache, in a filter ordered ahead of Spring Security so a refused caller never reaches BCrypt. 17 new tests, including one that proves the filter is actually reached in the running chain. |
+| F13 | `a31f569` | **Rate limiting** — D21. `POST /v1/auth/token` capped per address by a bucket4j token bucket in a bounded caffeine cache, in a filter ordered ahead of Spring Security so a refused caller never reaches BCrypt. 17 new tests, including one that proves the filter is actually reached in the running chain. |
+| F14 | (this change) | **Testcontainers** — D22. Every database test now starts a disposable Postgres 18 rather than using the developer's own, so `./mvnw test` needs only Docker. `@DatabaseTest` composes the setup; `TestDatabaseWiringTest` proves the suite is really on the container and not falling back to localhost. |
 
 **Verification approach:** `./mvnw test` (88 cases, all layers) is the automated net;
 `docs/SpaceSurvivors.postman_collection.json` run with `newman` is the end-to-end
@@ -576,12 +630,11 @@ Twice an integration test found what a mocked one structurally could not (D20, a
 
 *Priority order.*
 
-1. **Testcontainers** — the repository and integration tests need a real Postgres and use
-   the local one, so they will not run in CI or on a fresh clone. `spring-boot-testcontainers`
-   + a `@ServiceConnection` Postgres container.
-2. **`docs/ogrenme-rehberi.md` is a version behind** — §4/§7/§9 describe the pre-D19
+1. **`docs/ogrenme-rehberi.md` is a version behind** — §4/§7/§9 describe the pre-D19
    identity chain that no longer exists. It is the teaching side's main text, so this is
    not cosmetic.
+2. **No CI yet.** The suite is finally portable (D22), so a GitHub Actions workflow running
+   `./mvnw test` on every push is now a few lines and would mean something.
 3. **In-game profile screen** (Unity) — nothing calls `PATCH /v1/player`, so every player
    keeps their generated `UserNNNNNN`. The endpoint and its 400/409 answers are ready.
 4. **Leaderboard screen** (Unity) — `GET /v1/leaderboard` has no client; nothing displays a

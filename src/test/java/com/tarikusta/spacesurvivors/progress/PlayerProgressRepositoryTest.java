@@ -1,11 +1,11 @@
 package com.tarikusta.spacesurvivors.progress;
 
+import com.tarikusta.spacesurvivors.support.DatabaseTest;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>{@code @Transactional} rolls each test back, so they leave no rows behind.</p>
  */
-@SpringBootTest
+@DatabaseTest
 @Transactional
 class PlayerProgressRepositoryTest {
 

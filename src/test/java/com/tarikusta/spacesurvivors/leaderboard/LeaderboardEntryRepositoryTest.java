@@ -1,9 +1,9 @@
 package com.tarikusta.spacesurvivors.leaderboard;
 
+import com.tarikusta.spacesurvivors.support.DatabaseTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * without one: the JPQL join has to produce valid SQL, the rank sub-query has to agree
  * with the board's ordering, and the upsert has to genuinely replace rather than append.
  */
-@SpringBootTest
+@DatabaseTest
 @Transactional
 class LeaderboardEntryRepositoryTest {
 
