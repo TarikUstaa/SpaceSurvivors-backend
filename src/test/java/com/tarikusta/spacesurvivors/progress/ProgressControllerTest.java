@@ -14,6 +14,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -36,6 +37,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(ProgressController.class)
 @AutoConfigureMockMvc(addFilters = false)   // security is tested on its own, not here
 @Import(ApiExceptionHandler.class)
+// Same throwaway settings as every other test. These slices need no database, but
+// without this they run on the "local" profile and read the git-ignored
+// application-local.properties — which passes here and on no other machine.
+@ActiveProfiles("test")
 class ProgressControllerTest {
 
     private static final String BODY = """
