@@ -1,0 +1,20 @@
+$kind: http-request
+description: Ayni kimlik + ayni sir. Yeni satir YARATILMIYOR, ayni oyuncu icin yeni token. Oyun bunu her acilista bir kez yapiyor.
+url: "{{baseUrl}}/v1/auth/token"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "deviceId": "{{deviceA}}",
+      "deviceSecret": "{{secretA}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('status 200', () => pm.response.to.have.status(200));
+      pm.collectionVariables.set('tokenA', pm.response.json().token);
+    language: text/javascript
+order: 2000

@@ -1,0 +1,23 @@
+$kind: http-request
+url: "{{baseUrl}}/v1/leaderboard"
+method: POST
+headers:
+  Authorization: Bearer {{tokenB}}
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "mode": "infinite",
+      "survivedSeconds": 600,
+      "kills": 900,
+      "reachedLevel": 30,
+      "bossesDefeated": 3
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('status 200', () => pm.response.to.have.status(200));
+      pm.test('yeni rekor', () => pm.expect(pm.response.json().isNewRecord).to.be.true);
+    language: text/javascript
+order: 2000

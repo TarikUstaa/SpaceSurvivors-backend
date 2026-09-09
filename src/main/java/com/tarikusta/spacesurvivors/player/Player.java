@@ -1,5 +1,6 @@
 package com.tarikusta.spacesurvivors.player;
 
+import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -9,6 +10,12 @@ import java.util.UUID;
  * <p>Having its own type is what lets {@link PlayerService} return something without
  * either handing out a repository's row type or committing to a wire format. The
  * mapping to what a client sees lives in {@link PlayerDtos}.</p>
+ *
+ * @param firstLoginDate when this player was first seen. Set once by the database and
+ *                       never touched again, which is what makes it usable as a
+ *                       "member since" — it survives renames, reinstalls and every
+ *                       later login.
  */
-public record Player(UUID id, String deviceId, String displayName, String country) {
+public record Player(UUID id, String deviceId, String displayName, String country,
+                     Instant firstLoginDate) {
 }

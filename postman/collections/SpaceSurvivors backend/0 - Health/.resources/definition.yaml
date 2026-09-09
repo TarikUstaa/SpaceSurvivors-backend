@@ -1,0 +1,3 @@
+$kind: collection
+description: Kimlik istemeyen tek is uc noktasi. Bir saglik kontrolu, kimligi olmayan cagirana da cevap vermeli.
+order: 1000

@@ -1,0 +1,7 @@
+$kind: collection
+name: 3 - Progress  ·  /v1/progress
+description: |-
+  Bulut kayit. Tum oyun profili tek bir jsonb sutununda; sunucu icine hic bakmiyor.
+
+  Bu klasoru sirayla calistir: 404 -> ilk kayit -> catisma -> dogru surum.
+order: 4000

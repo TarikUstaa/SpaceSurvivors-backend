@@ -1,0 +1,17 @@
+$kind: http-request
+url: "{{baseUrl}}/v1/player"
+method: PATCH
+headers:
+  Authorization: Bearer {{tokenB}}
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "displayName": "Kaptan{{runId}}"
+    }
+scripts:
+  - type: afterResponse
+    code: pm.test('status 200', () => pm.response.to.have.status(200));
+    language: text/javascript
+order: 4000

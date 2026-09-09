@@ -149,6 +149,6 @@ public class PlayerProfile {
 
     /** The shape the rest of the application works with. */
     public Player toPlayer() {
-        return new Player(playerId, deviceId, displayName, country);
+        return new Player(playerId, deviceId, displayName, country, firstLoginDate);
     }
 }

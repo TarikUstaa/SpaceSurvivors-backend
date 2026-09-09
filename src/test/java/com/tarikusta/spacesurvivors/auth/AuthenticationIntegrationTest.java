@@ -94,7 +94,13 @@ class AuthenticationIntegrationTest {
 
         mvc.perform(get("/v1/player").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.displayName").isNotEmpty());
+                .andExpect(jsonPath("$.displayName").isNotEmpty())
+                // The profile screen names the account and says how long it has existed.
+                // Their own id is theirs to see; the device id is half a credential and
+                // must not be here, which is the distinction PlayerView is drawn on.
+                .andExpect(jsonPath("$.playerId").isNotEmpty())
+                .andExpect(jsonPath("$.firstLoginDate").isNotEmpty())
+                .andExpect(jsonPath("$.deviceId").doesNotExist());
     }
 
     @Test

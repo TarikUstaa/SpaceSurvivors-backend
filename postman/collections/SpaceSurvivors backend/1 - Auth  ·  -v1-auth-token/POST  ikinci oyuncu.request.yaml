@@ -1,0 +1,20 @@
+$kind: http-request
+description: Ikinci cihaz = ikinci oyuncu. Isim catismasi ve leaderboard siralamasi icin lazim.
+url: "{{baseUrl}}/v1/auth/token"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "deviceId": "{{deviceB}}",
+      "deviceSecret": "{{secretB}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('status 200', () => pm.response.to.have.status(200));
+      pm.collectionVariables.set('tokenB', pm.response.json().token);
+    language: text/javascript
+order: 3000

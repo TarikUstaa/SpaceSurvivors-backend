@@ -1,0 +1,11 @@
+$kind: http-request
+description: Bir zamanlar 500 donuyordu. Exception yakalayicisinin altina Spring'in kendi handler'i konunca duzeldi.
+url: "{{baseUrl}}/v1/yokboyle"
+method: GET
+headers:
+  Authorization: Bearer {{tokenA}}
+scripts:
+  - type: afterResponse
+    code: pm.test('status 404', () => pm.response.to.have.status(404));
+    language: text/javascript
+order: 1000

@@ -220,7 +220,7 @@ class PlayerServiceTest {
         @ParameterizedTest
         @ValueSource(strings = { "abc", "Tarik", "Kaptan_42", "aaaaaaaaaaaaaaaa" })
         void acceptsNamesWithinTheRules(String name) {
-            when(stored.toPlayer()).thenReturn(new Player(EXISTING, DEVICE, name, null));
+            when(stored.toPlayer()).thenReturn(new Player(EXISTING, DEVICE, name, null, null));
 
             assertThat(service.rename(EXISTING, name).displayName()).isEqualTo(name);
             verify(stored).setDisplayName(name);
@@ -243,7 +243,7 @@ class PlayerServiceTest {
 
         @Test
         void trimsBeforeJudgingAndBeforeStoring() {
-            when(stored.toPlayer()).thenReturn(new Player(EXISTING, DEVICE, "Tarik", null));
+            when(stored.toPlayer()).thenReturn(new Player(EXISTING, DEVICE, "Tarik", null, null));
 
             service.rename(EXISTING, "   Tarik   ");
 

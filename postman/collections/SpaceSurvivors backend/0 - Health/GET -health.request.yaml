@@ -1,0 +1,28 @@
+$kind: http-request
+name: GET /health
+description: |-
+  Sunucu ayakta mi ve veritabanina ulasabiliyor mu.
+
+  Bu istegin pre-request script'i tum kosum degiskenlerini uretiyor — koleksiyonu bastan calistirdiginda ilk sirada olmasi bu yuzden onemli.
+url: "{{baseUrl}}/health"
+method: GET
+scripts:
+  - type: beforeRequest
+    code: |-
+      // Fresh identities for every run, so the collection can be re-run without tripping
+      // over rows a previous run left behind. Display names are unique server-side, so
+      // they need a run id too.
+      const run = Date.now().toString(36);
+      pm.collectionVariables.set('runId', run);
+      pm.collectionVariables.set('deviceA', 'postman-a-' + run);
+      pm.collectionVariables.set('deviceB', 'postman-b-' + run);
+      pm.collectionVariables.set('secretA', 'secret-a-' + run + '-padded-to-thirty-two-chars');
+      pm.collectionVariables.set('secretB', 'secret-b-' + run + '-padded-to-thirty-two-chars');
+      pm.collectionVariables.set('name1', 'Pilot' + run);
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test('status 200', () => pm.response.to.have.status(200));
+      pm.test('db erisilebilir', () => pm.expect(pm.response.json().db).to.eql('UP'));
+    language: text/javascript
+order: 1000

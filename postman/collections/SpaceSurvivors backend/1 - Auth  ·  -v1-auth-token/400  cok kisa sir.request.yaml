@@ -1,0 +1,20 @@
+$kind: http-request
+description: Sir en az 32 karakter. Kisa bir sir ne kadar iyi hash'lenirse hash'lensin tahmin edilebilir; sunucunun bunu dayatmaktan baska yolu yok.
+url: "{{baseUrl}}/v1/auth/token"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "deviceId": "{{deviceB}}",
+      "deviceSecret": "kisa"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('status 400', () => pm.response.to.have.status(400));
+      pm.test('hangi alan bozuk soyleniyor', () => pm.expect(pm.response.json().fields).to.have.property('deviceSecret'));
+    language: text/javascript
+order: 5000

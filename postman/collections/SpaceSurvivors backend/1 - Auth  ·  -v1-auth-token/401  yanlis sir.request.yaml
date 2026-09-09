@@ -1,0 +1,26 @@
+$kind: http-request
+description: |-
+  Kimlik dogru, sir yanlis.
+
+  Eski tasarimda bu istek BASARILI olurdu: cihaz kimligini bilen herkes o oyuncuydu. Auth'un cozdugu sey tam olarak bu.
+url: "{{baseUrl}}/v1/auth/token"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "deviceId": "{{deviceA}}",
+      "deviceSecret": "bu-sir-yanlis-ama-yeterince-uzun-32-karakter"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('status 401', () => pm.response.to.have.status(401));
+      pm.test('hangi yarinin yanlis oldugunu soylemiyor', () => {
+          // Ayirt etmek, birinin istek istek hesap taramasina izin vermek olurdu.
+          pm.expect(pm.response.text()).to.not.include(pm.collectionVariables.get('deviceA'));
+      });
+    language: text/javascript
+order: 4000

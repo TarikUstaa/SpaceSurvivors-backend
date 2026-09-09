@@ -1,0 +1,7 @@
+$kind: collection
+name: 1 - Auth  ·  /v1/auth/token
+description: |-
+  Cihaz sirri SADECE buraya gidiyor; karsiliginda 1 saatlik token aliniyor ve diger her istek onu tasiyor. Sunucu sirrin yalnizca BCrypt hash'ini sakliyor.
+
+  Bu klasor once calismali: {{tokenA}} ve {{tokenB}} burada dolduruluyor.
+order: 2000

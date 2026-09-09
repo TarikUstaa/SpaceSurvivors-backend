@@ -1,0 +1,18 @@
+$kind: http-request
+description: Sadece harf/rakam/alt cizgi. Bosluk ve gorunmez karakterler taklit icin kullanilir.
+url: "{{baseUrl}}/v1/player"
+method: PATCH
+headers:
+  Authorization: Bearer {{tokenA}}
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "displayName": "Tarik Usta"
+    }
+scripts:
+  - type: afterResponse
+    code: pm.test('status 400', () => pm.response.to.have.status(400));
+    language: text/javascript
+order: 7000

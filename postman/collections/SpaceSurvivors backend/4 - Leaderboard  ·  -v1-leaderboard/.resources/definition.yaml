@@ -1,0 +1,4 @@
+$kind: collection
+name: 4 - Leaderboard  ·  /v1/leaderboard
+description: Oyuncu basina MOD basina tek satir — run gecmisi degil, en iyisi. Sunucu yalnizca rekoru gecerse yaziyor.
+order: 5000

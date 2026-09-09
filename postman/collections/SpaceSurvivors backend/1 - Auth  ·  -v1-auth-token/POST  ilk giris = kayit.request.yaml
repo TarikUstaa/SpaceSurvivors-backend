@@ -1,0 +1,22 @@
+$kind: http-request
+description: "Bu cihaz hic gorulmemis: sunucu player_profile satirini aciyor, player_id'yi Postgres uretiyor, sirrin hash'ini sakliyor. Oyunda kayit ekrani yok — ilk temas kayit demek."
+url: "{{baseUrl}}/v1/auth/token"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "deviceId": "{{deviceA}}",
+      "deviceSecret": "{{secretA}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('status 200', () => pm.response.to.have.status(200));
+      pm.test('token dondu', () => pm.expect(pm.response.json().token).to.be.a('string').and.not.empty);
+      pm.test('1 saat gecerli', () => pm.expect(pm.response.json().expiresIn).to.eql(3600));
+      pm.collectionVariables.set('tokenA', pm.response.json().token);
+    language: text/javascript
+order: 1000
