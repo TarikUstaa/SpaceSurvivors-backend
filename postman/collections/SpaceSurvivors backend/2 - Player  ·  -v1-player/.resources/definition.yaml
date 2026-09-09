@@ -1,4 +1,0 @@
-$kind: collection
-name: 2 - Player  ·  /v1/player
-description: Oyuncunun kimligi ve adi. player_id ve device_id cevaplarda ASLA gorunmuyor.
-order: 3000

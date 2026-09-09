@@ -36,3 +36,7 @@ build/
 # Real credentials for this machine. application-local.properties.example is the
 # committed template; the real file is created from it and stays out of git.
 application-local.properties
+
+### Postman app git integration — the canonical collection is docs/*.json ###
+.postman/
+postman/
