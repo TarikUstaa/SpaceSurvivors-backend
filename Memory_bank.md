@@ -66,13 +66,11 @@ keep them current so the teaching side is never working from a stale picture.
 
 ### The immediate priority
 
-**`docs/ogrenme-rehberi.md` is a version behind.** §4 (which it calls the project's most
-critical flow), §7 and §9 still describe `DeviceAuthFilter`, `Caller` and `resolveOrCreate`
-— all deleted by D19. It is the teaching side's main text, so this is not cosmetic: it
-would teach an identity chain that no longer exists.
+Nothing is blocked. The docs are current as of 2026-09-09: `ogrenme-rehberi.md` §4 was
+rewritten for the JWT chain, and §7/§8/§9 for rate limiting, Testcontainers and CI.
 
-Tarik has deferred it once already. It stays first because it is a correctness problem in
-the material the teaching side works from, not because it is urgent.
+Next by value rather than urgency: the Unity client still has no in-game way to reach the
+country field, `last_ip` still has no retention rule, and nothing is deployed.
 
 ---
 
@@ -646,22 +644,24 @@ Twice an integration test found what a mocked one structurally could not (D20, a
 
 *Priority order.*
 
-1. **`docs/ogrenme-rehberi.md` is a version behind** — §4/§7/§9 describe the pre-D19
-   identity chain that no longer exists. It is the teaching side's main text, so this is
-   not cosmetic. (Deferred once by Tarik.)
-2. **In-game profile screen** (Unity) — nothing calls `PATCH /v1/player`, so every player
-   keeps their generated `UserNNNNNN`. The endpoint and its 400/409 answers are ready.
-4. **Leaderboard screen** (Unity) — `GET /v1/leaderboard` has no client; nothing displays a
-   board.
-5. **`country` has no source.** The column stays NULL until a host or CDN supplies a country
-   header. Locally `last_ip` is always `::1`.
-6. **IP retention.** `last_ip` is personal data, stored deliberately; it needs a purpose and
+> **Both Unity clients landed 2026-09-09** (game repo `8ec06a3` … `e2f2272`): the main menu
+> shows the ranked board with Infinite/Campaign tabs, and the Profile screen renames through
+> `PATCH /v1/player`. Every endpoint this service exposes now has a caller.
+
+1. **`country` has no source.** The column stays NULL until a host or CDN supplies a country
+   header, and the Profile screen shows a dash for it. Locally `last_ip` is always `::1`.
+2. **IP retention.** `last_ip` is personal data, stored deliberately; it needs a purpose and
    a "delete IPs older than N days" job before this is public.
-7. **Least-privilege DB roles** — D3 debt, before any deploy.
-8. **Azure deploy** — Postgres Flexible Server + Container App, secrets from Key Vault.
-9. **Firebase auth** — optional now that D19 exists; it would add "recover my account on a
-   new phone". `player_id` stays stable, so still cheap to add. `docs/firebase-setup.md`
-   (from the scrapped repo) needs rewriting first.
+3. **Pagination** — the board is capped at 100 rows and there is no `page`. Fine now,
+   wrong the day there are more players than that.
+4. **Least-privilege DB roles** — D3 debt, before any deploy.
+5. **Azure deploy** — Postgres Flexible Server + Container App, secrets from Key Vault.
+   Nothing is deployed; the whole thing is localhost.
+6. **Firebase auth** — optional now that D19 exists; it would add "recover my account on a
+   new phone", which is the honest gap in device-based identity. `player_id` stays stable,
+   so still cheap to add. `docs/firebase-setup.md` (from the scrapped repo) needs rewriting.
+7. **Backoffice** — raised by Tarik, not started. Needs an admin login separate from the
+   device credential, and really wants a deployment to be worth anything.
 
 ## Local run
 

@@ -3,7 +3,7 @@
 Bu dosya `src/main/java/com/tarikusta/spacesurvivors/` altındaki sınıfların **neden** öyle
 yazıldığını anlatır. IntelliJ'de kodu açıp yanına bu dosyayı koy.
 
-Kararların uzun gerekçeleri `Memory_bank.md`'de (D1-D14), mentör sorularının kısa
+Kararların uzun gerekçeleri `Memory_bank.md`'de (D1-D22), mentör sorularının kısa
 cevapları `docs/savunma-notlari.md`'de.
 
 ---
@@ -12,7 +12,9 @@ cevapları `docs/savunma-notlari.md`'de.
 
 ```
 com.tarikusta.spacesurvivors
-├── auth/          Caller, DeviceAuthFilter            "sen kimsin"
+├── auth/          SecurityConfig, TokenController,
+│                  TokenService, CurrentPlayer,
+│                  ClientAddress                       "sen kimsin"
 ├── domain/        6 istisna sınıfı                    "ne ters gitti" (HTTP'den bağımsız)
 ├── player/        PlayerController, PlayerService,
 │                  PlayerProfileRepository,
@@ -28,6 +30,7 @@ com.tarikusta.spacesurvivors
 │                  LeaderboardEntryId, BoardRow,
 │                  LeaderboardDtos                     skorlar
 └── web/           ApiExceptionHandler, OpenApiConfig,
+                   RateLimitFilter, RateLimitConfig,
                    HealthController, HealthService     HTTP ortak işleri
 ```
 
@@ -179,8 +182,8 @@ context** (IoC container) denir.
 |---|---|---|
 | `@RestController` | HTTP uçları | `PlayerController`, `ProgressController`, `LeaderboardController` |
 | `@Service` | İş kuralları | `PlayerService`, `ProgressService`, `LeaderboardService`, `HealthService` |
-| `@Repository` | Veri erişimi | `PlayerRepository`, `ProgressRepository`, `LeaderboardRepository` |
-| `@Component` | Genel amaçlı | `DeviceAuthFilter` |
+| `@Repository` | Veri erişimi | `PlayerProfileRepository`, `PlayerProgressRepository`, `LeaderboardEntryRepository` |
+| `@Configuration` | Bean tanımlayan sınıf | `SecurityConfig`, `RateLimitConfig`, `WebConfig` |
 | `@RestControllerAdvice` | Global hata yakalayıcı | `ApiExceptionHandler` |
 
 **Önemli:** `@Service`, `@Repository` ve `@Component` teknik olarak neredeyse aynı şeyi
@@ -256,87 +259,149 @@ gerçekte nerede çalıştığını gizler ve bağlantıyı gereğinden çok dah
 
 ## 4. Kimlik zinciri — bu projenin en kritik akışı
 
-Her istek "sen kimsin"le başlıyor. Zincir dört adım ve her adım bir katman:
+Kimlik **iki aşamada** çalışıyor: oturumda bir kez kimlik kanıtlanıp bir bilet alınıyor,
+sonraki her istek o bileti taşıyor.
+
+### Aşama 1 — bileti al (oturumda bir kez)
 
 ```
-Authorization: Device dev-a3f91c22
+POST /v1/auth/token   {deviceId, deviceSecret}
        ↓
-DeviceAuthFilter          header'ı ayrıştır, IP'yi doğrula → Caller(deviceId, ip)
-       ↓                  DB'ye HİÇ dokunmaz
-Controller                @RequestAttribute ile Caller'ı alır, servise geçirir
+RateLimitFilter        adres başına 30/dk. Reddedilirse BCrypt'e HİÇ varmaz.
        ↓
-PlayerService             .resolveOrCreate(caller) → player_id (uuid)
-       ↓                  cihaz kimliğini bilen TEK sınıf
-ProgressService /         sadece player_id görür
-LeaderboardService
+Spring Security        /v1/auth/token public — geçiyor
+       ↓
+TokenController        tek satır → TokenService.issue(...)
+       ↓
+PlayerService          .authenticateDevice(deviceId, secret, ip)
+       ↓                cihaz kimliğini bilen TEK sınıf
+       ↓                cihaz yok  → kaydet: UserNNNNNN + BCrypt(secret)
+       ↓                cihaz var  → BCrypt.matches; tutmazsa 401
+       ↓
+TokenService.mint      JWT üret: sub = player_id, exp = +1 saat, HS256 imzalı
 ```
 
-### İki kimlik, iki farklı iş
-
-| | `device_id` | `player_id` |
-|---|---|---|
-| Ne | **Seni nasıl tanıyoruz** | **Sen kimsin** |
-| Üreten | Unity, `Guid.NewGuid()` | Postgres, `gen_random_uuid()` |
-| Nerede durur | Cihazdaki PlayerPrefs | Sadece veritabanı |
-| Değişir mi | Evet — yeniden kurulum, yeni telefon | **Asla** |
-| Neye bağlı | — | Tüm ilerleme, skorlar, isim |
-| API'de görünür mü | Header'da gider | **Hayır** |
-
-Aynı şey olsalardı yeni telefon = yeni oyuncu = ilerleme gitti olurdu. Ayrı oldukları için
-gerçek giriş geldiğinde `player_id` sabit kalacak, sadece "nasıl tanındığı" değişecek.
-
-### `DeviceAuthFilter` — katmanların *dışında*
-
-**Filter nedir?** İstek Controller'a varmadan **önce** çalışan ara katman:
+### Aşama 2 — bileti kullan (diğer her istek)
 
 ```
-İstek → Filter1 → Filter2 → DispatcherServlet → Controller
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+       ↓
+Spring Security        imzayı ve süreyi doğrular
+       ↓                geçersizse Controller'a HİÇ varmaz — 401
+       ↓
+CurrentPlayerArgumentResolver   token'ın sub claim'ini UUID'ye çevirir
+       ↓
+Controller             @CurrentPlayer UUID playerId
+       ↓
+ProgressService /      sadece player_id görür
+LeaderboardService     PlayerService'e artık HİÇ bağımlı değiller
 ```
 
-`chain.doFilter(request, response)` = "bir sonraki halkaya geç". Çağırmazsan istek
-Controller'a hiç ulaşmaz — kimlik reddi böyle yapılır:
+**Bu ikinci akıştaki en önemli şey ne olmadığı:** veritabanı sorgusu yok. Token'ın içinde
+zaten `player_id` yazıyor. Eskiden her istek "bu cihaz hangi oyuncu" diye bir `SELECT`
+atıyordu; o sorgu tamamen kalktı.
+
+### Üç kimlik, üç farklı iş
+
+| | `device_id` | `device_secret` | `player_id` |
+|---|---|---|---|
+| Ne | **Seni nasıl tanıyoruz** | **Kanıt** | **Sen kimsin** |
+| Üreten | Unity, `Guid.NewGuid()` | Unity, 2 GUID = 64 karakter | Postgres, `gen_random_uuid()` |
+| Nerede durur | Cihazda PlayerPrefs | Cihazda PlayerPrefs | DB + token'ın içinde |
+| Sunucu ne saklar | Değerin kendisi | **Sadece BCrypt hash'i** | Değerin kendisi |
+| Ağa ne zaman çıkar | Sadece `/v1/auth/token` | Sadece `/v1/auth/token` | Her token'ın içinde |
+| Değişir mi | Evet — yeniden kurulum, yeni telefon | Hayır | **Asla** |
+
+`device_id` ile `player_id` aynı şey olsaydı yeni telefon = yeni oyuncu = ilerleme gitti
+olurdu. Ayrı oldukları için gerçek hesap sistemi geldiğinde tek `player_id`'ye birden çok
+cihaz bağlanabilecek — hiçbir ilerleme satırına dokunmadan.
+
+### Kimlik iddiası ile kanıt neden ayrı
+
+`device_id` tek başına bir **iddia**: herkes bir tane uydurabilir. Eskiden sunucu ona
+inanıyordu, yani öğrendiğin her cihaz kimliği o oyuncu olabilmen demekti. Parolanın hiçbir
+korumasına sahip olmayan bir paroladan farksızdı: açıkta saklanıyor, her istekte gidiyor,
+süresi dolmuyor, iptal edilemiyor.
+
+`device_secret` kanıt. Sunucu onu **saklamıyor**, sadece BCrypt hash'ini tutuyor:
 
 ```java
-String deviceId = deviceId(request);
-if (deviceId == null) {
-    reject(response);       // 401, chain.doFilter çağrılmıyor
-    return;
+} else if (!passwordEncoder.matches(rawSecret, storedHash)) {
+    throw new AuthenticationFailedException("device id or secret is not recognised");
 }
-request.setAttribute(Caller.ATTR, new Caller(deviceId, clientIp(request)));
-chain.doFilter(request, response);
 ```
 
-**Neden `Authorization` header'ı?** Cihaz kimliği bir parametre değil, **kimlik bilgisi**:
-her uç noktada aynı, ve query string erişim loglarına, proxy loglarına, tarayıcı geçmişine
-sızar. `X-Device-Id` gibi özel bir header yerine `Authorization` çünkü RFC 6648 `X-`
-önekini 2012'de terk etti — ve Firebase gelince sadece şema `Device`'tan `Bearer`'a döner.
+**Neden BCrypt, neden SHA-256 değil?** BCrypt kasıtlı olarak yavaş (~82 ms, ölçtük) ve
+satır başına ayrı tuzlanıyor. Tablo çalınsa bile milyonlarca şifreyi tek tek denemek
+pratik değil. Hızlı bir hash saniyede milyarlarca denenebilir — bu özelliğe sahip değil.
 
-**Neden `null` fallback yok?** Eskiden header yoksa `dev-unknown` diye paylaşılan bir
-hesaba düşüyordu. Header'ı unutan herkes aynı oyuncu oluyordu — birbirlerinin kaydını
-okuyup ezebiliyorlardı. Daha kötüsü istemci hatasını gizliyordu: Unity header göndermeyi
-bıraksa her şey sessizce çalışmaya devam ederdi. Şimdi `401`.
+**Neden her hata aynı cevabı veriyor?** "Böyle bir cihaz yok" ile "sır yanlış"ı ayırmak,
+birinin istek istek "hangi cihaz kimlikleri kayıtlı" diye taramasına izin vermek demek
+olurdu (account enumeration). Mesaj tek: `device id or secret is not recognised`.
 
-**Neden DB'ye dokunmuyor?** Filtre her istekte çalışır, `/health` dahil. Ucuz kalmalı. Ve
-"oyuncu satırı var olmalı mı" bir iş kuralı — servis işi.
+**Neden bilinmeyen cihaz reddedilmiyor, kaydediliyor?** Oyunda "üye ol" ekranı yok. Cihaz
+ilk kez token isteyince sunucu sessizce bir oyuncu yaratıyor.
+
+> **Kabul edilen sınır:** sır cihazdaki PlayerPrefs'te duruyor. Kilidi açık cihaza erişen
+> hesaba da erişir. Cihaz tabanlı kimliğin dürüst tavanı bu — ve "telefonumu kaybettim"in
+> cevabının gerçek hesap (Firebase, e-posta) olmasının sebebi.
+
+### `@CurrentPlayer` — parametre *olmayan* parametre
+
+```java
+@GetMapping
+public PlayerDtos.PlayerView me(@CurrentPlayer UUID playerId) {
+    return PlayerDtos.PlayerView.of(players.view(playerId));
+}
+```
+
+Bu değer **isteğin gövdesinden ya da URL'inden gelmiyor** ve asla gelmemeli — çağıranın
+kendi `player_id`'sini yazabilmesi, kimlik doğrulamanın var olma sebebinin ta kendisi.
+İmzalı token'dan geliyor, başka hiçbir yerden.
+
+`CurrentPlayerArgumentResolver` bunu yapan sınıf. Spring MVC'ye "şu anotasyonu görürsen
+parametreyi şöyle doldur" diyorsun; `WebConfig` onu kaydediyor. Spring Security imzayı
+zaten doğruladığı için `SecurityContextHolder`'daki token'a güvenilebilir.
+
+### Neden filtre, neden bu sırada
+
+Spring Security bir **filtre zinciri** — istek Controller'a varmadan önce çalışan halkalar:
+
+```
+İstek → RateLimitFilter → Spring Security → DispatcherServlet → Controller
+```
+
+`RateLimitFilter` bilerek Security'den **önce**. Sebebi: korumak istediği pahalı iş
+(BCrypt) daha ilerideki Controller'da. Sonra konsaydı reddedilen istek token ayrıştırmadan
+geçmiş olurdu — filtre yine `429` dönerdi ama engellemek istediği işi engellemezdi.
+Ölçtük: kabul edilen istek ~82 ms, reddedilen ~1.1 ms. **75 kat.**
+
+Bir filtre `chain.doFilter(request, response)` çağırmazsa istek Controller'a hiç ulaşmaz —
+reddetme böyle yapılır.
 
 ### IP doğrulaması — iki gerçek hatanın yaşadığı yer
 
+`ClientAddress` (auth paketinde) çağıranın adresini bir Postgres `inet` kolonuna uygun
+hâle getiriyor:
+
 ```java
-private static String ipLiteralOrNull(String value) { ... }
+static String of(HttpServletRequest request) {
+    return literalOrNull(request.getRemoteAddr());
+}
 ```
 
-Buradaki değer bir Postgres `inet` kolonuna gidiyor ve ayrıştırılamayan bir metin **tüm
-SQL ifadesini** patlatır. Header tamamen istemci kontrolünde olduğu için doğrulanmamış bir
-değer, herkesin tek bir header'la her isteği `500` yapabilmesi demekti. Gerçekten
-olmuştu; `DeviceAuthFilterTest` o senaryoların hepsini test ediyor.
+Ayrıştırılamayan bir metin `inet` kolonuna gidince **tüm SQL ifadesini** patlatır. Bu
+gerçekten oldu: doğrulanmamış bir header değeri, herkesin tek bir header'la her isteği
+`500` yapabilmesi demekti.
 
-İkinci hata: `X-Forwarded-For` koşulsuz okunuyordu. O header ancak **bizim işlettiğimiz
-bir proxy** eklediyse anlamlı; doğrudan bağlanan bir istemciden geldiğinde sadece bir
-iddiadır. Şimdi `app.trust-forwarded-for` kapalıyken hiç okunmuyor.
+İkinci hata: `X-Forwarded-For` koşulsuz okunuyordu, yani `last_ip` istemcinin yazdığı
+şeydi. **Artık hiç okunmuyor.** O header ancak *bizim işlettiğimiz* bir proxy eklediyse
+anlamlı. Rate limiter'da bu daha da keskin: header'a güvenseydik yeni bir değer yeni bir
+kova demek olurdu — saldırgan sayıyı artırarak limiti tamamen kaldırırdı.
 
 > **Hostname çözümlemesi tuzağı:** `InetAddress.getByName("example.com")` DNS sorgusu
 > yapar — yavaş ve istismar edilebilir. Bu yüzden önce "bu bir literal adres mi" diye
-> bakıyoruz: iki nokta içeriyorsa IPv6 olabilir (hostname'de iki nokta olmaz), yoksa dört
+> bakılıyor: iki nokta içeriyorsa IPv6 olabilir (hostname'de iki nokta olmaz), yoksa dört
 > ondalık grup şartı var. Ancak ondan sonra `getByName` çağrılıyor.
 
 ---
@@ -439,8 +504,8 @@ standardı kullanmamak için sebep yoktu.
 public class PlayerController {
 
     @GetMapping                          // → GET /v1/player
-    public PlayerDtos.PlayerView me(@RequestAttribute(Caller.ATTR) Caller caller) {
-        return PlayerDtos.PlayerView.of(players.view(caller));
+    public PlayerDtos.PlayerView me(@CurrentPlayer UUID playerId) {
+        return PlayerDtos.PlayerView.of(players.view(playerId));
     }
 }
 ```
@@ -451,7 +516,7 @@ Anotasyonlar:
 |---|---|
 | `@RequestMapping("/v1/player")` | Sınıf seviyesi ön ek. Yol tek yerde yazılıyor. |
 | `@GetMapping` / `@PutMapping` / `@PatchMapping` / `@PostMapping` | Hangi HTTP fiili |
-| `@RequestAttribute` | Filtrenin isteğe iliştirdiği `Caller`'ı al |
+| `@CurrentPlayer` | Doğrulanmış token'daki `player_id` — bizim yazdığımız anotasyon (§4) |
 | `@RequestBody` | Gövdedeki JSON'u Java nesnesine çevir (Jackson) |
 | `@RequestParam` | URL'deki `?mode=infinite` |
 | `@Valid` | DTO'daki doğrulama anotasyonlarını çalıştır |
@@ -463,7 +528,7 @@ Anotasyonlar:
 **Tek istisna** `ProgressController.save`:
 
 ```java
-return switch (progress.save(caller, body)) {
+return switch (progress.save(playerId, body)) {
     case SaveOutcome.Accepted accepted -> ResponseEntity.ok(SaveAccepted.of(accepted));
     case SaveOutcome.Conflict conflict -> ResponseEntity.status(CONFLICT).body(SaveConflict.of(conflict));
 };
@@ -477,18 +542,21 @@ bakmıyor.
 **Neden exception değil:** çakışma, optimistic lock protokolünün **normal** bir sonucu.
 Beklenen akışı exception'la yönetmek kötü desendir.
 
-### `PlayerService` (148 satır) — kimlik kuralları
+### `PlayerService` (190 satır) — kimlik kuralları
 
-En yoğun sınıf. İçindeki en öğretici parça `create()`:
+En yoğun sınıf, ve cihaz kimliği diye bir şey olduğunu bilen **tek** sınıf. İçindeki en
+öğretici parça `register()`:
 
 ```java
+String secretHash = passwordEncoder.encode(rawSecret);
 for (int attempt = 0; attempt < MAX_NAME_ATTEMPTS; attempt++) {
-    Optional<UUID> created = players.insertIfFree(caller.deviceId(), generateName(), caller.ip());
-    if (created.isPresent()) return created.get();
+    players.insertIfFree(deviceId, generateName(), ip, secretHash);
 
-    Optional<UUID> raced = players.findIdByDevice(caller.deviceId());
-    if (raced.isPresent()) return raced.get();   // yarışı başkası kazandı, onu benimse
-    // isim doluydu — başka bir isimle tekrar dene
+    // Bu cihaza ait satır artık varsa: ya bizim insert tuttu, ya aynı cihaz için
+    // eşzamanlı bir istek yarışı kazandı. İkisi de doğru cevap.
+    Optional<PlayerProfile> profile = players.findByDeviceId(deviceId);
+    if (profile.isPresent()) return profile.get().getPlayerId();
+    // satır yoksa üretilen isim doluydu — başka isimle tekrar dene
 }
 ```
 
@@ -632,25 +700,25 @@ bile sadece `displayName` görünüyor. Kesme noktası `PlayerView.of()`.
 
 ```
  1. Tomcat               8080'de HTTP isteğini alır
- 2. DeviceAuthFilter     Authorization header'ını ayrıştırır → "dev-a3f91c22"
-                         IP'yi doğrular → Caller(deviceId, ip) isteğe iliştirilir
-                         chain.doFilter → devam
- 3. DispatcherServlet    "PUT /v1/progress" kime ait? → ProgressController.save()
- 4. Argüman çözümü       @RequestAttribute → Caller
+ 2. RateLimitFilter      yolu bakar: /v1/auth/token değil → dokunmadan geçer
+ 3. Spring Security      Authorization: Bearer ... → imza + süre doğrulanır
+                         geçersizse burada biter: 401, Controller görmez
+ 4. DispatcherServlet    "PUT /v1/progress" kime ait? → ProgressController.save()
+ 5. Argüman çözümü       @CurrentPlayer → token'ın sub'ı → UUID (DB sorgusu YOK)
                          @Valid @RequestBody → Jackson JSON'u SaveRequest'e çevirir,
                          version'ın @PositiveOrZero kuralı burada işler
- 5. ProgressController   → progress.save(caller, body)
- 6. Proxy                @Transactional gördü → BEGIN
- 7. ProgressService      progress objesi mi? değilse InvalidInputException
-                         → players.resolveOrCreate(caller) → player_id
-                         profile'a userId bas, boyut kontrolü
-                         → progress.update(...)  UPDATE ... WHERE version = :v
-                         0 satır → find() → satır yok → insert()
-                         → SaveOutcome.Accepted(1)
- 8. Proxy                istisna yok → COMMIT
- 9. ProgressController   switch → ResponseEntity.ok(SaveAccepted.of(accepted))
-10. Jackson              record'u JSON'a çevirir: {"version":1}
-11. Tomcat               200 OK
+ 6. ProgressController   → progress.save(playerId, body)
+ 7. Proxy                @Transactional gördü → BEGIN
+ 8. ProgressService      progress objesi mi? değilse InvalidInputException
+                         blob'a userId bas (sunucu kimliğin sahibi), boyut kontrolü
+                         findById → satır yok → save() → Accepted(0)
+                         satır var → version tutuyor mu?
+                             tutuyor  → saveAndFlush → Accepted(v+1)
+                             tutmuyor → Conflict(sunucudaki sürüm + kopya)
+ 9. Proxy                istisna yok → COMMIT
+10. ProgressController   switch → ResponseEntity.ok(SaveAccepted.of(accepted))
+11. Jackson              record'u JSON'a çevirir: {"version":1}
+12. Tomcat               200 OK
 ```
 
 Her adımda **kimin ne bildiğine** dikkat et:
@@ -659,13 +727,25 @@ Her adımda **kimin ne bildiğine** dikkat et:
 - Service, HTTP diye bir şey olduğunu bilmiyor
 - Repository, kuralları bilmiyor
 
+5. adıma özellikle dikkat: **oyuncunun kim olduğunu bulmak için veritabanına gidilmiyor.**
+Token zaten söylüyor. Bu yüzden `ProgressService` ve `LeaderboardService` `PlayerService`'e
+hiç bağımlı değil — kimlik, kendi endpoint'inde bir kez çözülüp bilete yazılıyor.
+
 ### `@Transactional` — en önemli anotasyonlardan biri
 
-Bu metotta birden fazla DB işlemi var. Anotasyon olmasa her biri ayrı ayrı kalıcı olurdu:
-`resolveOrCreate` oyuncuyu yaratır, `update` patlar → oyuncu var ama kaydı yok.
+Bir servis metodunda birden fazla DB işlemi olabiliyor. Anotasyon olmasa her biri ayrı
+ayrı kalıcı olurdu: `authenticateDevice` içinde oyuncu satırı yazılır, hemen ardından
+`touch` patlar → yarım yazılmış bir kayıt kalır.
 
 `@Transactional` hepsini **tek işleme** sarar: metot normal biterse `COMMIT`,
 `RuntimeException` çıkarsa `ROLLBACK`.
+
+> **Bu projede öğrenilmiş bir tuzak (D13):** Postgres'te bir işlem içinde **kısıt ihlali
+> fırlarsa tüm işlem iptal olur** — sonraki her sorgu `25P02` ile patlar. Yani
+> `try/catch (DuplicateKeyException)` yazıp "yakalayıp toparlarım" diyemezsin: `catch`
+> bloğunun içi ölü koddur. Bu yüzden ilk kayıt `ON CONFLICT DO NOTHING` kullanıyor —
+> hiçbir şey fırlamıyor. **İşlem içinde bir kısıt ihlali, ancak hiç fırlatmazsan
+> kurtarılabilir.**
 
 **Nasıl:** Spring, `@Transactional` gördüğü bean'i bir **proxy** ile sarar. Sen servisi
 çağırdığında aslında proxy'yi çağırırsın; o işlemi açar, gerçek metodu çalıştırır,
@@ -680,14 +760,18 @@ sonucuna göre commit/rollback yapar.
 
 ## 8. Testler
 
-**98 test.** Yapıyı doğru kurmanın somut karşılığı bu: servisler HTTP ve SQL bilmediği
+**110 test.** Yapıyı doğru kurmanın somut karşılığı bu: servisler HTTP ve SQL bilmediği
 için veritabanı olmadan, milisaniyelerde test edilebiliyorlar.
 
 | Sınıf | Ne test ediyor | Nasıl |
 |---|---|---|
 | `LeaderboardServiceTest` | daha iyi/kötü/eşit run, mod normalizasyonu, hile eşiği, sıralama, limit | Mockito |
 | `PlayerServiceTest` | isim kuralları, ad üretimi, **iki yarış senaryosu** | Mockito |
-| `DeviceAuthFilterTest` | header ayrıştırma, IP doğrulama, `401`, muaf yollar | `MockHttpServletRequest` |
+| `RateLimitFilterTest` | kova harcama, `429` + `Retry-After`, çağıran ayrımı | `MockHttpServletRequest` |
+| `RateLimitConcurrencyTest` | **64 eşzamanlı istek kapasiteden fazlasını alamıyor** | `ExecutorService` |
+| `AuthenticationIntegrationTest` | kayıt, yanlış sır `401`, **kurcalanmış token reddi** | `@SpringBootTest` |
+| `RateLimitIntegrationTest` | filtrenin gerçekten zincirde olduğu | `@SpringBootTest` |
+| `TestDatabaseWiringTest` | testlerin gerçekten kapsayıcıya bağlandığı | `@SpringBootTest` |
 | `ProgressControllerTest` | status eşlemeleri (200/404/409/413/400) | `@WebMvcTest` |
 | `ApiExceptionHandlerTest` | 404/405/415/400 — hepsi eskiden `500` dönüyordu | `@WebMvcTest` |
 | `PlayerProfileRepositoryTest` | `ON CONFLICT`, harf duyarsız benzersizlik, touch throttle | **gerçek Postgres** |
@@ -698,6 +782,27 @@ için veritabanı olmadan, milisaniyelerde test edilebiliyorlar.
 Üç tür test bir arada: **birim** (mock, DB yok), **dilim** (`@WebMvcTest`, sadece web
 katmanı), **entegrasyon** (`@SpringBootTest`, gerçek veritabanı). Hangisinin ne zaman
 doğru olduğunu görmek için üçü de var.
+
+### Veritabanı artık senin makinenden gelmiyor (D22)
+
+`@DatabaseTest` yazan her test kendi **tek kullanımlık Postgres kapsayıcısını** başlatıyor
+(Testcontainers). Eskiden testler senin diskindeki Postgres'e ve git'e girmeyen bir şifre
+dosyasına bağlıydı — yani suite yalnızca *tek bir* makinede geçiyordu, dolayısıyla CI
+imkânsızdı. Kapsayıcı her seferinde boş başladığı için Flyway migration'ları da her koşuda
+sıfırdan sınanıyor.
+
+### Tekrar eden ders: **davranışı değil, kablolamayı test et**
+
+Üç kez aynı şey oldu:
+
+| Ne | Testler ne diyordu | Gerçek |
+|---|---|---|
+| **D20** — `last_ip` `inet` kolonu | hepsi yeşil | `PATCH /v1/player` **her zaman 503**. Testler repository'yi mock'luyordu, Hibernate'in attığı SQL hiç Postgres'e ulaşmamıştı |
+| **D21** — rate limiter | filtre doğru sayıyordu | filtrenin uygulamada *çağrıldığı* test edilmiyordu. Yanlış sıraya kaydedilmiş bir filtre bütün testleri geçer, hiçbir şeyi korumaz |
+| **D22** — Testcontainers | hepsi yeşil olurdu | `@ServiceConnection` bozuk olsa datasource sessizce `localhost:5432`'ye düşerdi ve **testler yine geçerdi** — bu makinede orada doğru şemalı bir Postgres olduğu için |
+
+Üçünün ortak dersi: bir kablolama parçası bir şeyi *gerçek* yapıyorsa, **kabloyu doğrula** —
+çünkü onun sağladığı davranış kazara da üretilebilir.
 
 ### Testlerin gerçekten yakaladıkları
 
@@ -712,8 +817,9 @@ Bunlar teorik değil — hepsi yazılırken çıktı:
    her yolu koruyunca, hangi kimlik bilgisinin gönderileceğini anlatan dokümanı okumak
    için o kimlik bilgisini zaten bilmen gerekiyordu.
 
-**Hâlâ eksik: Testcontainers.** Entegrasyon testleri yerel Postgres'e bağlı — CI'da
-çalışmaz. Doğrusu her koşuda bir kapsayıcı başlatmak.
+**CI:** `.github/workflows/ci.yml` her push ve pull request'te `./mvnw test` koşuyor.
+Bu ancak D22'den sonra mümkün oldu — testler taşınabilir olmadan çalıştıracak yer yoktu.
+
 ---
 
 ## 9. Bu projede *kullanmadığımız* şeyler
@@ -724,7 +830,9 @@ Bunlar teorik değil — hepsi yazılırken çıktı:
 | **Lombok** (`@Data`, `@Getter`) | Java `record`'ları aynı işi dille yapıyor |
 | **`@Autowired` alan enjeksiyonu** | Constructor injection tercih edildi |
 | **Servis arayüzleri** (`XService` + `XServiceImpl`) | Tek implementasyon varken gereksiz katman |
-| **Spring Security** | Şimdilik dev-auth yeterli. Gerçek auth gelince |
+| **Servis katmanında HTTP tipleri** | Statü seçimi tek yerde: `ApiExceptionHandler` (§5) |
+| **Sayfalama** (`Pageable` API'de) | Tahta 100 satırla sınırlı; gerçek ihtiyaç doğunca |
+| **`player_run` geçmiş tablosu** | Bilerek ertelendi (D12) — **geriye dönük doldurulamaz** |
 
 Son maddeyi açayım: eski Java projelerinde her servisin bir `interface`'i ve bir `Impl`'i
 olurdu. Sebebi eski test araçlarının sınıfları taklit edememesiydi. Modern Mockito
@@ -745,19 +853,26 @@ Arayüz, **gerçekten birden fazla implementasyon olduğunda** açılır: Unity 
    tutarsız kalır?
 5. **Orta:** `AlreadyTakenException`'ı `409` yerine `422` yapmak isteseydin kaç dosyaya
    dokunurdun? (Cevap: bir. Neden?)
-6. **Zor:** `create()` içindeki `ON CONFLICT DO NOTHING` yerine tekrar `try/catch` koysan
+6. **Zor:** `register()` içindeki `ON CONFLICT DO NOTHING` yerine tekrar `try/catch` koysan
    hangi test kırılır? O testi ezbere anlatabiliyor musun?
 7. **Zor:** İki cihaz aynı anda `PUT /v1/progress` yollarsa ne olur? İkisi de aynı
    `version`'ı gönderirse hangisi kazanır, diğeri ne alır?
+8. **Zor:** `RateLimitConfig.FILTER_ORDER`'ı `-100`'ün üstüne çıkarsan hangi test kırılır?
+   Kırılmasaydı ne kaybederdik? (§4'teki 82 ms / 1.1 ms ölçümünü hatırla.)
+9. **Zor:** `@CurrentPlayer` yerine `playerId`'yi `@RequestParam` yapsak ne olurdu?
+   Tam olarak hangi saldırı mümkün hâle gelirdi?
 
 ---
 
 ## 11. Sonraki okumalar
 
-- **Testcontainers** — entegrasyon testlerini yerel Postgres'ten kurtarmak için
 - **JPA ilişkileri** (`@OneToMany`, `@ManyToOne`) — bu projede hiç ihtiyaç olmadı, ama
   gerçek bir nesne grafiğinde işin merkezi orası
-- **Spring Security** — gerçek kimlik doğrulama geldiğinde
-- **Profiller** — `application-local.properties` zaten kullanıyoruz, prod'da genişleyecek
+- **Spring Security'nin derinliği** — burada tek bir `SecurityFilterChain` ve JWT var;
+  rol/yetki, method security (`@PreAuthorize`), OAuth2 akışları hiç kullanılmadı
+- **Profiller** — `application-local.properties` ve `application-test.properties` zaten
+  kullanılıyor, prod'da genişleyecek
+- **Observability** — Actuator açık ama metrik toplanmıyor. Rate limiter'ın "kaç kez
+  reddettim"i tam olarak buraya ait (§4)
 
 Resmî dokümantasyon gerçekten iyi: <https://docs.spring.io/spring-boot/index.html>
