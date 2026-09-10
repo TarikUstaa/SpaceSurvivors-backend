@@ -10,9 +10,9 @@
 # psql comes from a throwaway postgres container rather than the host, so this needs Docker
 # but not a local Postgres install.
 #
-# Idempotent: the SQL resets passwords and re-applies grants without dropping anything, and
-# the two role passwords are kept in deploy/.env.azure so a re-run does not invalidate the
-# credentials the running service is already using.
+# Idempotent: the SQL resets passwords and re-applies grants without dropping anything. All
+# three passwords come from the Key Vault azure-setup.sh created, so a re-run sets the roles
+# to the same credentials the running service is already using rather than locking it out.
 
 set -euo pipefail
 
@@ -31,26 +31,23 @@ command -v docker >/dev/null || { echo "docker not found (used only to run psql)
 az account show >/dev/null 2>&1 || { echo "Not logged in. Run: az login"; exit 1; }
 [[ -f "$SECRETS_FILE" ]] || { echo "$SECRETS_FILE missing — run azure-setup.sh first."; exit 1; }
 
+# Names only; the passwords are in the vault this points at.
 # shellcheck disable=SC1090
 source "$SECRETS_FILE"
-SUB="$(az account show --query id -o tsv)"
 HOST="${PG_SERVER}.postgres.database.azure.com"
 
-# ── role passwords ────────────────────────────────────────────────────────
-# Same reasoning as azure-setup.sh: generated once, reused forever. Rotating them here would
-# leave the running revision holding credentials that no longer work.
-if [[ -z "${APP_DB_PASSWORD:-}" || -z "${MIGRATE_DB_PASSWORD:-}" ]]; then
-    say "Generating role passwords → $SECRETS_FILE"
-    APP_DB_PASSWORD="Ss1$(openssl rand -base64 24 | tr -d '/+=')"
-    MIGRATE_DB_PASSWORD="Ss1$(openssl rand -base64 24 | tr -d '/+=')"
-    umask 077
-    cat >> "$SECRETS_FILE" <<EOF
-APP_DB_PASSWORD='$APP_DB_PASSWORD'
-MIGRATE_DB_PASSWORD='$MIGRATE_DB_PASSWORD'
-EOF
-else
-    say "Reusing role passwords from $SECRETS_FILE"
-fi
+# ── passwords ─────────────────────────────────────────────────────────────
+# Read, never generated here. azure-setup.sh created them and the container app is already
+# using two of them; inventing new ones at this point would lock the running revision out of
+# its own database.
+say "Reading passwords from $VAULT"
+vault_secret() {
+    az keyvault secret show --vault-name "$VAULT" -n "$1" --query value -o tsv 2>/dev/null \
+        || { echo "secret $1 not found in $VAULT — run azure-setup.sh first."; exit 1; }
+}
+DB_PASSWORD="$(vault_secret pg-admin-password)"
+APP_DB_PASSWORD="$(vault_secret app-db-password)"
+MIGRATE_DB_PASSWORD="$(vault_secret migrate-db-password)"
 
 # ── temporary access ──────────────────────────────────────────────────────
 MYIP="$(curl -fsS https://api.ipify.org)"
@@ -99,19 +96,9 @@ SQL
 say "Done"
 cat <<EOF
 
-ss_migrate and ss_app exist and the grants are in place.
+ss_migrate and ss_app exist, own what they should, and are limited to what they need.
 
-The container app is NOT switched over by this script, because the running image has to
-understand the split first — application-prod.properties has to name FLYWAY_USER and
-FLYWAY_PASSWORD, and an older image handed DB_USER=ss_app would try to run Flyway as an
-account that cannot write the migration ledger, and crash-loop.
-
-The order that avoids that:
-
-  1. Set FLYWAY_USER / FLYWAY_PASSWORD on the app while DB_USER is still ssadmin.
-     The current image ignores them.
-  2. Deploy the image that reads them. It migrates as ss_migrate, still queries as ssadmin.
-  3. Switch DB_USER / DB_PASSWORD to ss_app.
-
-Passwords for both roles are in $SECRETS_FILE.
+If this is a first-time setup, run ./deploy/azure-setup.sh again now: the container app is
+configured to connect as ss_app, and until this script had run there was no such role for it
+to connect as.
 EOF

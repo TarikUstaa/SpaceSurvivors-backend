@@ -16,7 +16,7 @@ push to main → CI runs 110 tests → Deploy builds the image, pushes it to ghc
 | registry | ghcr.io, **public package** | Comes with the repository; Azure's own registry is a flat ~$5/month for storage alone. Public is what keeps credentials out of this entirely — Actions pushes with the token it already has, Azure pulls anonymously. The image holds no secrets: `.dockerignore` excludes the local properties file and everything sensitive arrives from the environment at runtime. |
 | database | Postgres Flexible Server, B1ms | The smallest tier. Free for 12 months on a new subscription, ~$13-15/month after. |
 | region | Italy North | **Not West Europe.** A Free Trial subscription is refused there: *"Subscriptions are restricted from provisioning in this region."* Italy North is the closest unrestricted region to Turkey. `az postgres flexible-server list-skus --location <r>` shows this as `OfferRestricted: Enabled`, not as a missing SKU — so a naive SKU check reports "available" and the create still fails. |
-| secrets | container-app secrets | Key Vault is the better answer at scale and another moving part at this one. Revisit if a second service ever needs the same secret. |
+| secrets | Key Vault, read by managed identity | The container app stores only a reference to each secret and fetches the value at start as itself. `az containerapp show` returns the name and the vault URL; the value is not there to leak, and no password is written to the machine that ran the setup. |
 
 ## 1. Create the resources
 

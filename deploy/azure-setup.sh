@@ -14,23 +14,26 @@
 #
 #   ghcr.io, not Azure Container Registry. ACR's cheapest tier is a flat ~$5/month for
 #   somewhere to keep an image; GitHub's registry comes with the repository. The image is
-#   published public, which is what keeps this script free of credentials entirely: the
+#   published public, which is what keeps this script free of registry credentials: the
 #   workflow pushes with the token GitHub already gives it, and Azure pulls anonymously.
-#   Nothing sensitive is in the image — .dockerignore keeps the local properties file out and
+#   Nothing sensitive is in the image — .dockerignore excludes the local properties file and
 #   every secret arrives from the environment at runtime.
 #
 #   Postgres Flexible Server, Burstable B1ms — the smallest that exists. Covered by the
 #   12-month free allowance on a new subscription; roughly $13-15/month after that.
+#
+#   Key Vault holds the four passwords. The container app stores only a reference to each and
+#   fetches the value at start with its own managed identity, so no secret is written into the
+#   app's configuration, into this repository, or into a file on the machine that ran this.
+#   `az containerapp show` returns the name and the vault URL; the value is not there to leak.
 #
 # It talks to the Container Apps ARM API through `az rest` rather than `az containerapp`.
 # That is not stylistic: the containerapp extension cannot install on macOS 26, because pip's
 # vendored truststore reads platform.mac_ver(), gets an empty string, and dies on int("").
 # `az rest` is core CLI and has no such dependency, so this script runs anywhere `az` does.
 #
-# Nothing here prints a secret. The two the app needs (the database password and the JWT
-# signing key) are generated locally, handed to Azure as container-app secrets, and written
-# to deploy/.env.azure — which is git-ignored — so a later run reuses them rather than
-# invalidating every token already issued.
+# deploy/.env.azure records only which server and vault were created — both names, neither a
+# secret. It stays git-ignored anyway, because the pair identifies the deployment.
 
 set -euo pipefail
 
@@ -42,7 +45,6 @@ set -euo pipefail
 # restriction shows up as OfferRestricted=Enabled with that reason, not as a missing SKU.
 LOCATION="${LOCATION:-italynorth}"
 RG="${RG:-spacesurvivors-rg}"
-PG_SERVER="${PG_SERVER:-spacesurvivors-pg-$RANDOM}"   # must be globally unique
 PG_ADMIN="${PG_ADMIN:-ssadmin}"
 PG_DB="spacesurvivors"
 ENVIRONMENT="${ENVIRONMENT:-spacesurvivors-env}"
@@ -50,12 +52,14 @@ APP="${APP:-spacesurvivors-api}"
 IMAGE="${IMAGE:-ghcr.io/tarikustaa/spacesurvivors-backend:latest}"
 API_VERSION="2024-03-01"
 
-SECRETS_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.env.azure"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STATE_FILE="$HERE/.env.azure"
 
 say() { printf '\n\033[1m▸ %s\033[0m\n' "$*"; }
 
 # ── preflight ─────────────────────────────────────────────────────────────
 command -v az >/dev/null || { echo "az CLI not found — install it first."; exit 1; }
+command -v openssl >/dev/null || { echo "openssl not found."; exit 1; }
 az account show >/dev/null 2>&1 || { echo "Not logged in. Run: az login"; exit 1; }
 
 say "Subscription"
@@ -63,42 +67,82 @@ az account show --query '{name:name, id:id}' -o tsv
 SUB="$(az account show --query id -o tsv)"
 ARM="https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers"
 
+# Names of things created on a previous run. Not secrets — but they identify the deployment,
+# so the file stays out of git.
+# shellcheck disable=SC1090
+[[ -f "$STATE_FILE" ]] && source "$STATE_FILE"
+PG_SERVER="${PG_SERVER:-spacesurvivors-pg-$RANDOM}"   # must be globally unique
+VAULT="${VAULT:-ss-kv-$RANDOM}"                       # ditto
+
 # These are not registered on a brand-new subscription, and the failure when they are not is
 # an opaque one — so ask for them up front.
 say "Registering resource providers (safe to repeat, may take a minute)"
 az provider register --namespace Microsoft.App --wait
 az provider register --namespace Microsoft.DBforPostgreSQL --wait
 az provider register --namespace Microsoft.OperationalInsights --wait
+az provider register --namespace Microsoft.KeyVault --wait
 
-# ── secrets ───────────────────────────────────────────────────────────────
-if [[ -f "$SECRETS_FILE" ]]; then
-    say "Reusing secrets from $SECRETS_FILE"
-    # shellcheck disable=SC1090
-    source "$SECRETS_FILE"
-else
-    say "Generating secrets → $SECRETS_FILE"
-    # openssl rather than `tr -dc … < /dev/urandom | head -c N`: in that pipeline head exits
-    # as soon as it has N bytes, tr takes SIGPIPE, and under `set -o pipefail` the whole
-    # command reports failure — so `set -e` kills the script before it writes anything.
-    #
-    # The "Ss1" prefix is not decoration. Azure rejects an admin password that does not use at
-    # least three of {uppercase, lowercase, digit, symbol}, and base64 output, while it almost
-    # always contains all three, is not guaranteed to. Prefixing makes it certain.
-    DB_PASSWORD="Ss1$(openssl rand -base64 24 | tr -d '/+=')"
-    # 64 hex characters — HS256 wants at least 32 bytes of key material.
-    JWT_SECRET="$(openssl rand -hex 32)"
-    umask 077
-    cat > "$SECRETS_FILE" <<EOF
-# Generated by azure-setup.sh — git-ignored, never commit.
-DB_PASSWORD='$DB_PASSWORD'
-JWT_SECRET='$JWT_SECRET'
-PG_SERVER='$PG_SERVER'
-EOF
-fi
-
-# ── resource group ────────────────────────────────────────────────────────
 say "Resource group: $RG"
 az group create --name "$RG" --location "$LOCATION" -o none
+
+# ── key vault ─────────────────────────────────────────────────────────────
+if az keyvault show -g "$RG" -n "$VAULT" >/dev/null 2>&1; then
+    say "Key Vault $VAULT already exists"
+else
+    say "Creating Key Vault $VAULT"
+    # RBAC rather than the older access policies: the same role model as everything else, and
+    # the app's identity can be given read-only access to secrets and nothing more.
+    az keyvault create -g "$RG" -n "$VAULT" -l "$LOCATION" \
+        --enable-rbac-authorization true --retention-days 7 -o none
+fi
+VAULT_URI="https://${VAULT}.vault.azure.net"
+
+# Creating a vault does not grant the creator access to what is in it.
+say "Granting the signed-in user permission to write secrets"
+CALLER="$(az ad signed-in-user show --query id -o tsv)"
+az role assignment create --assignee-object-id "$CALLER" --assignee-principal-type User \
+    --role "Key Vault Secrets Officer" \
+    --scope "$ARM/Microsoft.KeyVault/vaults/$VAULT" -o none 2>/dev/null || true
+# RBAC takes a little while to be visible to the data plane.
+sleep 20
+
+# ── secrets ───────────────────────────────────────────────────────────────
+# Generated once and kept in the vault. Regenerating the JWT key would invalidate every token
+# already in a player's hands, and regenerating a database password would leave the running
+# revision holding a credential that no longer works — so existing values are never touched.
+#
+# Azure rejects an admin password that does not use at least three of {uppercase, lowercase,
+# digit, symbol}, and base64 output, while it almost always contains all three, is not
+# guaranteed to. The "Ss1" prefix makes it certain.
+#
+# openssl rather than `tr -dc … < /dev/urandom | head -c N`: in that pipeline head exits as
+# soon as it has N bytes, tr takes SIGPIPE, and under `set -o pipefail` the whole command
+# reports failure — so `set -e` would kill the script before it wrote anything.
+ensure_secret() {
+    local name="$1" value="$2"
+    if az keyvault secret show --vault-name "$VAULT" -n "$name" >/dev/null 2>&1; then
+        echo "  $name — already in the vault"
+    else
+        az keyvault secret set --vault-name "$VAULT" -n "$name" --value "$value" -o none
+        echo "  $name — stored"
+    fi
+}
+
+say "Secrets in $VAULT"
+ensure_secret pg-admin-password    "Ss1$(openssl rand -base64 24 | tr -d '/+=')"
+ensure_secret app-db-password      "Ss1$(openssl rand -base64 24 | tr -d '/+=')"
+ensure_secret migrate-db-password  "Ss1$(openssl rand -base64 24 | tr -d '/+=')"
+ensure_secret jwt-secret           "$(openssl rand -hex 32)"   # 32 bytes — HS256 wants that much
+
+PG_PASSWORD="$(az keyvault secret show --vault-name "$VAULT" -n pg-admin-password --query value -o tsv)"
+
+umask 077
+cat > "$STATE_FILE" <<EOF
+# Written by azure-setup.sh. Names, not secrets — the passwords live in the Key Vault named
+# here. Git-ignored regardless, because the pair identifies the deployment.
+PG_SERVER='$PG_SERVER'
+VAULT='$VAULT'
+EOF
 
 # ── postgres ──────────────────────────────────────────────────────────────
 if az postgres flexible-server show -g "$RG" -n "$PG_SERVER" >/dev/null 2>&1; then
@@ -110,7 +154,7 @@ else
         --name "$PG_SERVER" \
         --location "$LOCATION" \
         --admin-user "$PG_ADMIN" \
-        --admin-password "$DB_PASSWORD" \
+        --admin-password "$PG_PASSWORD" \
         --tier Burstable \
         --sku-name Standard_B1ms \
         --storage-size 32 \
@@ -121,13 +165,13 @@ fi
 
 # 0.0.0.0-0.0.0.0 is Azure's special rule meaning "other Azure services", not "the whole
 # internet" — the container app's outbound address is not fixed, so it cannot be listed.
-# Everything still needs the password and TLS. Narrowing this to a private VNet is the
-# proper answer and costs more; noted rather than done.
+# Everything still needs the password and TLS. Narrowing this to a private VNet is the proper
+# answer and costs more; noted in deploy/README.md rather than done.
 #
 # -s names the server and -n names the rule; there is no --rule-name, and passing one makes
 # the CLI print its help and exit 0 — so this step silently did nothing for a while and was
-# only noticed because `--public-access 0.0.0.0` above had already added an equivalent rule
-# during server creation. Hence the check afterwards.
+# only noticed because --public-access above had already added an equivalent rule. Hence the
+# check afterwards.
 say "Firewall rule for Azure-internal callers"
 az postgres flexible-server firewall-rule create \
     -g "$RG" -s "$PG_SERVER" -n allow-azure-services \
@@ -170,34 +214,39 @@ fi
 
 # ── container app ─────────────────────────────────────────────────────────
 # The image must already exist in ghcr.io and be public — Container Apps validates the pull
-# while creating, and a create against a missing image leaves the app in Failed with no
-# revision at all. Push it first by letting the Deploy workflow run (see deploy/README.md).
-say "Container app $APP"
-
+# while creating, and a create against a missing image leaves the app Failed with no revision
+# at all. Push it first by letting the Deploy workflow run (see deploy/README.md).
+#
+# DB_USER is ss_app and Flyway runs as ss_migrate; deploy/db-roles.sh creates both. On a first
+# setup those roles do not exist yet, so run this, then db-roles.sh, then this again — the
+# second pass is what starts a revision that can actually connect.
 APP_URL="$ARM/Microsoft.App/containerApps/$APP?api-version=$API_VERSION"
-BODY="$(mktemp)"
-trap 'rm -f "$BODY"' EXIT
 
-DB_URL="$DB_URL" DB_PASSWORD="$DB_PASSWORD" JWT_SECRET="$JWT_SECRET" \
-ENV_ID="/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.App/managedEnvironments/$ENVIRONMENT" \
-IMAGE="$IMAGE" LOCATION="$LOCATION" PG_ADMIN="$PG_ADMIN" \
-python3 - "$BODY" <<'PY'
+write_app_body() {
+    DB_URL="$DB_URL" IMAGE="$IMAGE" LOCATION="$LOCATION" VAULT_URI="$VAULT_URI" \
+    ENV_ID="/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.App/managedEnvironments/$ENVIRONMENT" \
+    python3 - "$1" <<'PY'
 import json, os, sys
+v = os.environ["VAULT_URI"]
+def vault(name):
+    # identity "system" = the app's own managed identity fetches this at start. The value is
+    # never stored in the app, so `show` returns this reference and nothing to leak.
+    return {"name": name, "keyVaultUrl": f"{v}/secrets/{name}", "identity": "system"}
+
 json.dump({
     "location": os.environ["LOCATION"],
+    # System-assigned: an identity whose lifetime is the app's, so deleting the app deletes it
+    # and there is no orphaned principal left holding access to the vault.
+    "identity": {"type": "SystemAssigned"},
     "properties": {
         "managedEnvironmentId": os.environ["ENV_ID"],
         "configuration": {
-            # allowInsecure false: the ingress serves HTTPS and refuses to answer plain HTTP,
-            # so a client cannot be talked into sending its device secret in the clear.
+            # allowInsecure false: the ingress serves HTTPS and refuses plain HTTP, so a client
+            # cannot be talked into sending its device secret in the clear.
             "ingress": {"external": True, "targetPort": 8080,
                         "transport": "auto", "allowInsecure": False},
-            # Secrets live here rather than in env values so they are write-only afterwards:
-            # a later `show` returns the name, never the value.
-            "secrets": [
-                {"name": "db-password", "value": os.environ["DB_PASSWORD"]},
-                {"name": "jwt-secret",  "value": os.environ["JWT_SECRET"]},
-            ],
+            "secrets": [vault("jwt-secret"), vault("app-db-password"),
+                        vault("migrate-db-password")],
         },
         "template": {
             "containers": [{
@@ -205,10 +254,12 @@ json.dump({
                 "image": os.environ["IMAGE"],
                 "resources": {"cpu": 0.5, "memory": "1Gi"},
                 "env": [
-                    {"name": "DB_URL",      "value": os.environ["DB_URL"]},
-                    {"name": "DB_USER",     "value": os.environ["PG_ADMIN"]},
-                    {"name": "DB_PASSWORD", "secretRef": "db-password"},
-                    {"name": "JWT_SECRET",  "secretRef": "jwt-secret"},
+                    {"name": "DB_URL",          "value": os.environ["DB_URL"]},
+                    {"name": "DB_USER",         "value": "ss_app"},
+                    {"name": "DB_PASSWORD",     "secretRef": "app-db-password"},
+                    {"name": "JWT_SECRET",      "secretRef": "jwt-secret"},
+                    {"name": "FLYWAY_USER",     "value": "ss_migrate"},
+                    {"name": "FLYWAY_PASSWORD", "secretRef": "migrate-db-password"},
                 ],
             }],
             # min 0 is the whole reason for choosing Container Apps: idle costs nothing. The
@@ -218,7 +269,23 @@ json.dump({
     },
 }, open(sys.argv[1], "w"))
 PY
+}
 
+say "Container app $APP"
+BODY="$(mktemp)"
+trap 'rm -f "$BODY"' EXIT
+write_app_body "$BODY"
+az rest --method put --url "$APP_URL" --body "@$BODY" -o none
+
+# The identity does not exist until the app does, and the app cannot read the vault until the
+# identity has been granted access — so the grant comes second, and the app is written again
+# afterwards to start a revision that can actually fetch its secrets.
+PRINCIPAL="$(az rest --method get --url "$APP_URL" --query identity.principalId -o tsv)"
+say "Letting the app read the vault"
+az role assignment create --assignee-object-id "$PRINCIPAL" --assignee-principal-type ServicePrincipal \
+    --role "Key Vault Secrets User" \
+    --scope "$ARM/Microsoft.KeyVault/vaults/$VAULT" -o none 2>/dev/null || true
+sleep 20
 az rest --method put --url "$APP_URL" --body "@$BODY" -o none
 
 for _ in $(seq 1 40); do
@@ -226,8 +293,9 @@ for _ in $(seq 1 40); do
     case "$state" in
         Succeeded) break ;;
         Failed|Canceled)
-            echo "Container app failed to provision. The usual cause is that"
-            echo "$IMAGE cannot be pulled — check it exists and the package is public."
+            echo "Container app failed to provision. The usual causes are that"
+            echo "$IMAGE cannot be pulled (does it exist, is the package public?),"
+            echo "or that db-roles.sh has not run yet so ss_app does not exist."
             exit 1 ;;
     esac
     sleep 15
@@ -241,13 +309,14 @@ cat <<EOF
   API           https://${FQDN}
   Health        https://${FQDN}/health
   Postgres      ${PG_HOST}
-  Secrets       ${SECRETS_FILE}  (git-ignored)
+  Key Vault     ${VAULT_URI}
+  State         ${STATE_FILE}  (names only — no secrets)
 
 Next:
-  1. curl https://${FQDN}/health          → {"status":"UP","db":"UP"}
-  2. Point Unity's BackendConfig.DefaultBaseUrl at https://${FQDN}
-  3. Add the GitHub repository secrets from deploy/README.md so CI deploys on every
-     green push to main.
+  1. ./deploy/db-roles.sh, if ss_app and ss_migrate do not exist yet, then run this again.
+  2. curl https://${FQDN}/health          → {"status":"UP","db":"UP"}
+  3. Point Unity's BackendConfig.DefaultBaseUrl at https://${FQDN}
+  4. ./deploy/azure-oidc.sh and the repository secrets, so CI deploys on every green push.
 
 If /health says db is DOWN, the first request also had to start the container from zero and
 let Flyway migrate an empty database — give it a few seconds and ask again.
