@@ -16,6 +16,7 @@ push to main → CI runs 110 tests → Deploy builds the image, pushes it to ghc
 | registry | ghcr.io, **public package** | Comes with the repository; Azure's own registry is a flat ~$5/month for storage alone. Public is what keeps credentials out of this entirely — Actions pushes with the token it already has, Azure pulls anonymously. The image holds no secrets: `.dockerignore` excludes the local properties file and everything sensitive arrives from the environment at runtime. |
 | database | Postgres Flexible Server, B1ms | The smallest tier. Free for 12 months on a new subscription, ~$13-15/month after. |
 | region | Italy North | **Not West Europe.** A Free Trial subscription is refused there: *"Subscriptions are restricted from provisioning in this region."* Italy North is the closest unrestricted region to Turkey. `az postgres flexible-server list-skus --location <r>` shows this as `OfferRestricted: Enabled`, not as a missing SKU — so a naive SKU check reports "available" and the create still fails. |
+| logs | Log Analytics, 30 days | A Container App keeps **no** logs by default — a live stream and nothing retained, so an exception overnight leaves nothing to read in the morning. |
 | secrets | Key Vault, read by managed identity | The container app stores only a reference to each secret and fetches the value at start as itself. `az containerapp show` returns the name and the vault URL; the value is not there to leak, and no password is written to the machine that ran the setup. |
 
 ## 1. Create the resources
@@ -146,6 +147,33 @@ because an image that does not know about `spring.flyway.user` would try to migr
    image ignores them.
 2. Deploy the image that reads them — it migrates as `ss_migrate`, still queries as admin.
 3. Switch `DB_USER` / `DB_PASSWORD` to `ss_app`.
+
+## Reading the logs
+
+`az monitor log-analytics query` needs an extension that will not install on macOS 26 (same
+truststore bug as `containerapp`), so query the API directly:
+
+```bash
+WSID=$(az monitor log-analytics workspace show -g spacesurvivors-rg -n ss-logs --query customerId -o tsv)
+az rest --method post --resource "https://api.loganalytics.io" \
+  --url "https://api.loganalytics.io/v1/workspaces/$WSID/query" \
+  --body '{"query":"ContainerAppConsoleLogs_CL | where ContainerAppName_s == \"spacesurvivors-api\" | top 20 by TimeGenerated desc | project TimeGenerated, Log_s"}'
+```
+
+`ContainerAppSystemLogs_CL` is the platform's own view — restarts, probe failures, image
+pulls. A burst of `startup probe failed: connection refused` right after a revision starts is
+normal: the probe polls while the JVM is still booting.
+
+## Cold starts
+
+`minReplicas: 0` means an idle service costs nothing and the first request afterwards waits
+for a container to start and a JVM to boot — measured at about **twenty seconds**. The game
+client allows for it: only the token request, which every session makes first and which is
+therefore the one that pays the wake-up, gets a long timeout
+(`BackendRequest.WakeTimeoutSeconds`). Nothing in the client blocks on it.
+
+If that ever needs to be instant, `minReplicas: 1` removes the cold start and adds a replica
+running around the clock — which is most of what scaling to zero was saving.
 
 ## Known debt
 - **The Postgres firewall allows any Azure service.** A container app's outbound address is

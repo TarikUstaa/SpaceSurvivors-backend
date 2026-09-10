@@ -48,6 +48,7 @@ RG="${RG:-spacesurvivors-rg}"
 PG_ADMIN="${PG_ADMIN:-ssadmin}"
 PG_DB="spacesurvivors"
 ENVIRONMENT="${ENVIRONMENT:-spacesurvivors-env}"
+WORKSPACE="${WORKSPACE:-ss-logs}"
 APP="${APP:-spacesurvivors-api}"
 IMAGE="${IMAGE:-ghcr.io/tarikustaa/spacesurvivors-backend:latest}"
 API_VERSION="2024-03-01"
@@ -81,6 +82,7 @@ az provider register --namespace Microsoft.App --wait
 az provider register --namespace Microsoft.DBforPostgreSQL --wait
 az provider register --namespace Microsoft.OperationalInsights --wait
 az provider register --namespace Microsoft.KeyVault --wait
+az provider register --namespace Microsoft.OperationsManagement --wait 2>/dev/null || true
 
 say "Resource group: $RG"
 az group create --name "$RG" --location "$LOCATION" -o none
@@ -158,6 +160,7 @@ else
         --tier Burstable \
         --sku-name Standard_B1ms \
         --storage-size 32 \
+        --storage-auto-grow Enabled \
         --version 16 \
         --public-access 0.0.0.0 \
         --yes -o none
@@ -196,14 +199,42 @@ PG_HOST="$(az postgres flexible-server show -g "$RG" -n "$PG_SERVER" --query ful
 # the driver fails with a clear message rather than a handshake error if that ever changes.
 DB_URL="jdbc:postgresql://${PG_HOST}:5432/${PG_DB}?sslmode=require"
 
+# ── logs ──────────────────────────────────────────────────────────────────
+# Without this a Container App keeps no logs at all. There is a live event stream and nothing
+# retained, so an exception at three in the morning leaves no trace to read at nine — which is
+# precisely when logs are the only thing there is. 30 days is plenty, and this much ingestion
+# costs pennies.
+if az monitor log-analytics workspace show -g "$RG" -n "$WORKSPACE" >/dev/null 2>&1; then
+    say "Log Analytics workspace $WORKSPACE already exists"
+else
+    say "Creating Log Analytics workspace $WORKSPACE"
+    az monitor log-analytics workspace create -g "$RG" -n "$WORKSPACE" -l "$LOCATION" \
+        --retention-time 30 -o none
+fi
+WS_ID="$(az monitor log-analytics workspace show -g "$RG" -n "$WORKSPACE" --query customerId -o tsv)"
+WS_KEY="$(az monitor log-analytics workspace get-shared-keys -g "$RG" -n "$WORKSPACE" --query primarySharedKey -o tsv)"
+
 # ── container apps environment ────────────────────────────────────────────
 ENV_URL="$ARM/Microsoft.App/managedEnvironments/$ENVIRONMENT?api-version=$API_VERSION"
 
+ENV_BODY="$(mktemp)"
+WS_ID="$WS_ID" WS_KEY="$WS_KEY" LOCATION="$LOCATION" python3 - "$ENV_BODY" <<'__ENVJSON__'
+import json, os, sys
+json.dump({"location": os.environ["LOCATION"], "properties": {"appLogsConfiguration": {
+    "destination": "log-analytics",
+    "logAnalyticsConfiguration": {"customerId": os.environ["WS_ID"],
+                                  "sharedKey": os.environ["WS_KEY"]}}}},
+          open(sys.argv[1], "w"))
+__ENVJSON__
+
 if [[ "$(az rest --method get --url "$ENV_URL" --query properties.provisioningState -o tsv 2>/dev/null)" == "Succeeded" ]]; then
-    say "Container Apps environment $ENVIRONMENT already exists"
+    say "Container Apps environment $ENVIRONMENT already exists — refreshing its log settings"
+    az rest --method put --url "$ENV_URL" --body "@$ENV_BODY" -o none
+    rm -f "$ENV_BODY"
 else
     say "Creating Container Apps environment $ENVIRONMENT"
-    az rest --method put --url "$ENV_URL" --body '{"location":"'"$LOCATION"'","properties":{}}' -o none
+    az rest --method put --url "$ENV_URL" --body "@$ENV_BODY" -o none
+    rm -f "$ENV_BODY"
     for _ in $(seq 1 40); do
         state="$(az rest --method get --url "$ENV_URL" --query properties.provisioningState -o tsv 2>/dev/null || true)"
         [[ "$state" == "Succeeded" ]] && break
@@ -310,6 +341,7 @@ cat <<EOF
   Health        https://${FQDN}/health
   Postgres      ${PG_HOST}
   Key Vault     ${VAULT_URI}
+  Logs          workspace ${WORKSPACE}, kept 30 days
   State         ${STATE_FILE}  (names only — no secrets)
 
 Next:
