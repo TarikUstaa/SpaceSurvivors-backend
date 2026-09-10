@@ -1,7 +1,7 @@
 # Deploying
 
 Two things live here: a script that builds the Azure resources once, and the explanation of
-the four GitHub secrets that let CI deploy to them afterwards. The pipeline this produces is:
+the five GitHub secrets that let CI deploy to them afterwards. The pipeline this produces is:
 
 ```
 push to main → CI runs 110 tests → Deploy builds the image, pushes it to ghcr.io,
@@ -13,8 +13,9 @@ push to main → CI runs 110 tests → Deploy builds the image, pushes it to ghc
 | piece | choice | why |
 | --- | --- | --- |
 | compute | Container Apps | Scales to zero. Idle costs nothing, which suits traffic that is "a few friends". |
-| registry | ghcr.io | Comes with the repository. Azure's own registry is a flat ~$5/month for storage alone. |
+| registry | ghcr.io, **public package** | Comes with the repository; Azure's own registry is a flat ~$5/month for storage alone. Public is what keeps credentials out of this entirely — Actions pushes with the token it already has, Azure pulls anonymously. The image holds no secrets: `.dockerignore` excludes the local properties file and everything sensitive arrives from the environment at runtime. |
 | database | Postgres Flexible Server, B1ms | The smallest tier. Free for 12 months on a new subscription, ~$13-15/month after. |
+| region | Italy North | **Not West Europe.** A Free Trial subscription is refused there: *"Subscriptions are restricted from provisioning in this region."* Italy North is the closest unrestricted region to Turkey. `az postgres flexible-server list-skus --location <r>` shows this as `OfferRestricted: Enabled`, not as a missing SKU — so a naive SKU check reports "available" and the create still fails. |
 | secrets | container-app secrets | Key Vault is the better answer at scale and another moving part at this one. Revisit if a second service ever needs the same secret. |
 
 ## 1. Create the resources
@@ -38,9 +39,15 @@ it is safe — every step checks for what it is about to create, and it reuses t
 that file rather than inventing new ones. Regenerating the JWT key would invalidate every
 token already in a player's hands.
 
-It will ask for a GitHub username and a token with the single `read:packages` scope, so the
-container app can pull the private image. Create that at
-<https://github.com/settings/tokens>.
+It asks for nothing. The container app step needs the image to already exist in ghcr.io and
+be public, so on a first-ever setup let the Deploy workflow run once (below) before this
+reaches that step — Container Apps validates the pull while creating, and a create against a
+missing image leaves the app `Failed` with no revision at all.
+
+**After the very first workflow run, make the package public**: GitHub publishes a new
+package as private regardless of anything else. Go to the repository → *Packages* →
+`spacesurvivors-backend` → *Package settings* → *Change visibility* → Public. Skip this and
+Azure cannot pull, with a message that says only `UNAUTHORIZED`.
 
 When it finishes it prints the API's URL. Check it:
 
@@ -102,6 +109,17 @@ Finally add five repository secrets under **Settings → Secrets and variables �
 
 In the Unity project, set `BackendConfig.DefaultBaseUrl` to the printed `https://…` host and
 ship a build. Until then the game talks to whatever is running on localhost.
+
+## If `az containerapp` will not install
+
+On macOS 26 the extension fails with `Pip failed with status code 2`. The cause is upstream
+and nothing to do with this project: pip's vendored `truststore` reads `platform.mac_ver()`,
+gets an empty string from the CLI's bundled Python 3.14, and dies on `int("")`. Installing the
+wheel by hand does not help either — it needs `kubernetes`, which drags in its own tree.
+
+`azure-setup.sh` therefore drives the Container Apps ARM API through `az rest`, which is core
+CLI and needs no extension. The Deploy workflow still uses `az containerapp update`, because
+the extension installs without trouble on a GitHub runner.
 
 ## Rolling back
 

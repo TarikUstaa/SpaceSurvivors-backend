@@ -13,21 +13,34 @@
 #   "Tarik and some friends" that is the difference between pennies and a monthly charge.
 #
 #   ghcr.io, not Azure Container Registry. ACR's cheapest tier is a flat ~$5/month for
-#   somewhere to keep an image. GitHub's registry comes with the repository at no cost. The
-#   image stays private and the container app is given a read-only token to pull it.
+#   somewhere to keep an image; GitHub's registry comes with the repository. The image is
+#   published public, which is what keeps this script free of credentials entirely: the
+#   workflow pushes with the token GitHub already gives it, and Azure pulls anonymously.
+#   Nothing sensitive is in the image — .dockerignore keeps the local properties file out and
+#   every secret arrives from the environment at runtime.
 #
 #   Postgres Flexible Server, Burstable B1ms — the smallest that exists. Covered by the
 #   12-month free allowance on a new subscription; roughly $13-15/month after that.
 #
+# It talks to the Container Apps ARM API through `az rest` rather than `az containerapp`.
+# That is not stylistic: the containerapp extension cannot install on macOS 26, because pip's
+# vendored truststore reads platform.mac_ver(), gets an empty string, and dies on int("").
+# `az rest` is core CLI and has no such dependency, so this script runs anywhere `az` does.
+#
 # Nothing here prints a secret. The two the app needs (the database password and the JWT
 # signing key) are generated locally, handed to Azure as container-app secrets, and written
-# to deploy/.env.azure — which is git-ignored — so that a later run of this script or a
-# manual `az` command can find them again.
+# to deploy/.env.azure — which is git-ignored — so a later run reuses them rather than
+# invalidating every token already issued.
 
 set -euo pipefail
 
 # ── settings ──────────────────────────────────────────────────────────────
-LOCATION="${LOCATION:-westeurope}"
+# Italy North, not West Europe: on a Free Trial subscription Postgres Flexible Server answers
+# "Subscriptions are restricted from provisioning in this region" for West Europe and several
+# of its neighbours. Italy North is unrestricted and is the closest unrestricted region to
+# Turkey. `az postgres flexible-server list-skus --location <region>` reports this — the
+# restriction shows up as OfferRestricted=Enabled with that reason, not as a missing SKU.
+LOCATION="${LOCATION:-italynorth}"
 RG="${RG:-spacesurvivors-rg}"
 PG_SERVER="${PG_SERVER:-spacesurvivors-pg-$RANDOM}"   # must be globally unique
 PG_ADMIN="${PG_ADMIN:-ssadmin}"
@@ -35,6 +48,7 @@ PG_DB="spacesurvivors"
 ENVIRONMENT="${ENVIRONMENT:-spacesurvivors-env}"
 APP="${APP:-spacesurvivors-api}"
 IMAGE="${IMAGE:-ghcr.io/tarikustaa/spacesurvivors-backend:latest}"
+API_VERSION="2024-03-01"
 
 SECRETS_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.env.azure"
 
@@ -46,27 +60,33 @@ az account show >/dev/null 2>&1 || { echo "Not logged in. Run: az login"; exit 1
 
 say "Subscription"
 az account show --query '{name:name, id:id}' -o tsv
+SUB="$(az account show --query id -o tsv)"
+ARM="https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers"
 
-# The two resource providers this uses are not registered on a brand-new subscription, and
-# the failure when they are not is an opaque one — so ask for them up front.
+# These are not registered on a brand-new subscription, and the failure when they are not is
+# an opaque one — so ask for them up front.
 say "Registering resource providers (safe to repeat, may take a minute)"
 az provider register --namespace Microsoft.App --wait
 az provider register --namespace Microsoft.DBforPostgreSQL --wait
 az provider register --namespace Microsoft.OperationalInsights --wait
 
 # ── secrets ───────────────────────────────────────────────────────────────
-# Reuse what a previous run generated; only invent them once. Re-generating the JWT key
-# would invalidate every token already issued, and re-generating the database password
-# would not match the server that already exists.
 if [[ -f "$SECRETS_FILE" ]]; then
     say "Reusing secrets from $SECRETS_FILE"
     # shellcheck disable=SC1090
     source "$SECRETS_FILE"
 else
     say "Generating secrets → $SECRETS_FILE"
-    # LC_ALL=C because tr on a UTF-8 locale rejects the byte stream from /dev/urandom.
-    DB_PASSWORD="$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)"
-    JWT_SECRET="$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 64)"
+    # openssl rather than `tr -dc … < /dev/urandom | head -c N`: in that pipeline head exits
+    # as soon as it has N bytes, tr takes SIGPIPE, and under `set -o pipefail` the whole
+    # command reports failure — so `set -e` kills the script before it writes anything.
+    #
+    # The "Ss1" prefix is not decoration. Azure rejects an admin password that does not use at
+    # least three of {uppercase, lowercase, digit, symbol}, and base64 output, while it almost
+    # always contains all three, is not guaranteed to. Prefixing makes it certain.
+    DB_PASSWORD="Ss1$(openssl rand -base64 24 | tr -d '/+=')"
+    # 64 hex characters — HS256 wants at least 32 bytes of key material.
+    JWT_SECRET="$(openssl rand -hex 32)"
     umask 077
     cat > "$SECRETS_FILE" <<EOF
 # Generated by azure-setup.sh — git-ignored, never commit.
@@ -109,62 +129,103 @@ az postgres flexible-server firewall-rule create \
     --rule-name allow-azure-services \
     --start-ip-address 0.0.0.0 --end-ip-address 0.0.0.0 -o none 2>/dev/null || true
 
+# --name, not --database-name: the CLI rejects the longer spelling by printing its help text
+# and exiting 0, so a `|| true` here would hide the fact that nothing was created — which is
+# why the next line checks instead of trusting.
 say "Database $PG_DB"
 az postgres flexible-server db create \
-    --resource-group "$RG" --server-name "$PG_SERVER" --database-name "$PG_DB" -o none 2>/dev/null || true
+    --resource-group "$RG" --server-name "$PG_SERVER" --name "$PG_DB" -o none 2>/dev/null || true
+
+az postgres flexible-server db list -g "$RG" -s "$PG_SERVER" --query "[].name" -o tsv \
+    | grep -qx "$PG_DB" || { echo "Database $PG_DB was not created."; exit 1; }
 
 PG_HOST="$(az postgres flexible-server show -g "$RG" -n "$PG_SERVER" --query fullyQualifiedDomainName -o tsv)"
 # sslmode=require: Azure refuses an unencrypted connection anyway, and being explicit means
 # the driver fails with a clear message rather than a handshake error if that ever changes.
 DB_URL="jdbc:postgresql://${PG_HOST}:5432/${PG_DB}?sslmode=require"
 
-# ── container apps ────────────────────────────────────────────────────────
-az extension add --name containerapp --upgrade --only-show-errors -o none
+# ── container apps environment ────────────────────────────────────────────
+ENV_URL="$ARM/Microsoft.App/managedEnvironments/$ENVIRONMENT?api-version=$API_VERSION"
 
-if az containerapp env show -g "$RG" -n "$ENVIRONMENT" >/dev/null 2>&1; then
+if [[ "$(az rest --method get --url "$ENV_URL" --query properties.provisioningState -o tsv 2>/dev/null)" == "Succeeded" ]]; then
     say "Container Apps environment $ENVIRONMENT already exists"
 else
     say "Creating Container Apps environment $ENVIRONMENT"
-    az containerapp env create -g "$RG" -n "$ENVIRONMENT" --location "$LOCATION" -o none
+    az rest --method put --url "$ENV_URL" --body '{"location":"'"$LOCATION"'","properties":{}}' -o none
+    for _ in $(seq 1 40); do
+        state="$(az rest --method get --url "$ENV_URL" --query properties.provisioningState -o tsv 2>/dev/null || true)"
+        [[ "$state" == "Succeeded" ]] && break
+        [[ "$state" == "Failed" ]] && { echo "environment failed to provision"; exit 1; }
+        sleep 15
+    done
 fi
 
-echo
-echo "The image is private, so the container app needs a token that can read it."
-echo "Create one at https://github.com/settings/tokens with the single scope read:packages"
-read -r -p "GitHub username: " GH_USER
-read -r -s -p "GitHub token (read:packages): " GH_TOKEN; echo
+# ── container app ─────────────────────────────────────────────────────────
+# The image must already exist in ghcr.io and be public — Container Apps validates the pull
+# while creating, and a create against a missing image leaves the app in Failed with no
+# revision at all. Push it first by letting the Deploy workflow run (see deploy/README.md).
+say "Container app $APP"
 
-if az containerapp show -g "$RG" -n "$APP" >/dev/null 2>&1; then
-    say "Updating existing container app $APP"
-    az containerapp registry set -g "$RG" -n "$APP" \
-        --server ghcr.io --username "$GH_USER" --password "$GH_TOKEN" -o none
-    az containerapp secret set -g "$RG" -n "$APP" \
-        --secrets db-password="$DB_PASSWORD" jwt-secret="$JWT_SECRET" -o none
-    az containerapp update -g "$RG" -n "$APP" --image "$IMAGE" -o none
-else
-    say "Creating container app $APP"
-    az containerapp create \
-        --resource-group "$RG" \
-        --name "$APP" \
-        --environment "$ENVIRONMENT" \
-        --image "$IMAGE" \
-        --registry-server ghcr.io \
-        --registry-username "$GH_USER" \
-        --registry-password "$GH_TOKEN" \
-        --target-port 8080 \
-        --ingress external \
-        --secrets db-password="$DB_PASSWORD" jwt-secret="$JWT_SECRET" \
-        --env-vars \
-            DB_URL="$DB_URL" \
-            DB_USER="$PG_ADMIN" \
-            DB_PASSWORD=secretref:db-password \
-            JWT_SECRET=secretref:jwt-secret \
-        --cpu 0.5 --memory 1.0Gi \
-        --min-replicas 0 --max-replicas 2 \
-        -o none
-fi
+APP_URL="$ARM/Microsoft.App/containerApps/$APP?api-version=$API_VERSION"
+BODY="$(mktemp)"
+trap 'rm -f "$BODY"' EXIT
 
-FQDN="$(az containerapp show -g "$RG" -n "$APP" --query properties.configuration.ingress.fqdn -o tsv)"
+DB_URL="$DB_URL" DB_PASSWORD="$DB_PASSWORD" JWT_SECRET="$JWT_SECRET" \
+ENV_ID="/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.App/managedEnvironments/$ENVIRONMENT" \
+IMAGE="$IMAGE" LOCATION="$LOCATION" PG_ADMIN="$PG_ADMIN" \
+python3 - "$BODY" <<'PY'
+import json, os, sys
+json.dump({
+    "location": os.environ["LOCATION"],
+    "properties": {
+        "managedEnvironmentId": os.environ["ENV_ID"],
+        "configuration": {
+            # allowInsecure false: the ingress serves HTTPS and refuses to answer plain HTTP,
+            # so a client cannot be talked into sending its device secret in the clear.
+            "ingress": {"external": True, "targetPort": 8080,
+                        "transport": "auto", "allowInsecure": False},
+            # Secrets live here rather than in env values so they are write-only afterwards:
+            # a later `show` returns the name, never the value.
+            "secrets": [
+                {"name": "db-password", "value": os.environ["DB_PASSWORD"]},
+                {"name": "jwt-secret",  "value": os.environ["JWT_SECRET"]},
+            ],
+        },
+        "template": {
+            "containers": [{
+                "name": "api",
+                "image": os.environ["IMAGE"],
+                "resources": {"cpu": 0.5, "memory": "1Gi"},
+                "env": [
+                    {"name": "DB_URL",      "value": os.environ["DB_URL"]},
+                    {"name": "DB_USER",     "value": os.environ["PG_ADMIN"]},
+                    {"name": "DB_PASSWORD", "secretRef": "db-password"},
+                    {"name": "JWT_SECRET",  "secretRef": "jwt-secret"},
+                ],
+            }],
+            # min 0 is the whole reason for choosing Container Apps: idle costs nothing. The
+            # price is a few seconds of cold start on the first request after a quiet spell.
+            "scale": {"minReplicas": 0, "maxReplicas": 2},
+        },
+    },
+}, open(sys.argv[1], "w"))
+PY
+
+az rest --method put --url "$APP_URL" --body "@$BODY" -o none
+
+for _ in $(seq 1 40); do
+    state="$(az rest --method get --url "$APP_URL" --query properties.provisioningState -o tsv 2>/dev/null || true)"
+    case "$state" in
+        Succeeded) break ;;
+        Failed|Canceled)
+            echo "Container app failed to provision. The usual cause is that"
+            echo "$IMAGE cannot be pulled — check it exists and the package is public."
+            exit 1 ;;
+    esac
+    sleep 15
+done
+
+FQDN="$(az rest --method get --url "$APP_URL" --query properties.configuration.ingress.fqdn -o tsv)"
 
 say "Done"
 cat <<EOF
@@ -177,11 +238,9 @@ cat <<EOF
 Next:
   1. curl https://${FQDN}/health          → {"status":"UP","db":"UP"}
   2. Point Unity's BackendConfig.DefaultBaseUrl at https://${FQDN}
-  3. Add these GitHub repository secrets so CI can deploy on every green push:
-       AZURE_CREDENTIALS   (see deploy/README.md)
-       AZURE_RG=${RG}
-       AZURE_APP=${APP}
+  3. Add the GitHub repository secrets from deploy/README.md so CI deploys on every
+     green push to main.
 
-If /health says db is DOWN, the first request also had to run Flyway against an empty
-database — give it a few seconds and ask again before assuming something is wrong.
+If /health says db is DOWN, the first request also had to start the container from zero and
+let Flyway migrate an empty database — give it a few seconds and ask again.
 EOF
