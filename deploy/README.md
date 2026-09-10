@@ -123,11 +123,31 @@ az containerapp update -g spacesurvivors-rg -n spacesurvivors-api \
   --image ghcr.io/tarikustaa/spacesurvivors-backend:<the good sha>
 ```
 
-## Known debt
+## Database roles
 
-- **The database user is the server admin.** `application.properties` defaults `DB_USER` to
-  `ss_app`, but nothing has created that role on the Azure server yet, so the app connects
-  with full rights it does not need. Least-privilege roles were already deferred once (D3).
+The service does not connect as the server administrator. `deploy/db-roles.sh` applies
+`db-roles.sql`, which splits that one login into the two jobs that exist:
+
+| role | may | used by |
+| --- | --- | --- |
+| `ss_migrate` | own and change the schema | Flyway, at startup |
+| `ss_app` | `SELECT/INSERT/UPDATE/DELETE` rows, nothing else | every request |
+
+`ss_app` cannot create, alter or drop anything, and has no privilege at all on
+`flyway_schema_history` — an account that can rewrite the ledger is an account that can
+convince Flyway a migration already ran. The script proves this rather than asserting it: it
+reconnects as `ss_app` and prints what it can and cannot do.
+
+Switching an existing deployment over has an order, and getting it wrong crash-loops the app,
+because an image that does not know about `spring.flyway.user` would try to migrate as
+`ss_app`:
+
+1. Set `FLYWAY_USER` / `FLYWAY_PASSWORD` while `DB_USER` is still the admin. The running
+   image ignores them.
+2. Deploy the image that reads them — it migrates as `ss_migrate`, still queries as admin.
+3. Switch `DB_USER` / `DB_PASSWORD` to `ss_app`.
+
+## Known debt
 - **The Postgres firewall allows any Azure service.** A container app's outbound address is
   not fixed, so it cannot be listed individually. The connection still needs the password and
   TLS. A private VNet is the correct fix and costs more.
