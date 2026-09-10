@@ -37,6 +37,10 @@ build/
 # committed template; the real file is created from it and stays out of git.
 application-local.properties
 
+### deploy secrets — never commit ###
+# Written by deploy/azure-setup.sh: the deployed database password and the JWT signing key.
+deploy/.env.azure
+
 ### Postman app git integration — the canonical collection is docs/*.json ###
 .postman/
 postman/

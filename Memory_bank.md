@@ -631,6 +631,8 @@ which happens at the end of every run.
 | F13 | `a31f569` | **Rate limiting** — D21. `POST /v1/auth/token` capped per address by a bucket4j token bucket in a bounded caffeine cache, in a filter ordered ahead of Spring Security so a refused caller never reaches BCrypt. 17 new tests, including one that proves the filter is actually reached in the running chain. |
 | F14 | `d3e4763`, `c5ca96e`, `5129677` | **Testcontainers** — D22. Every database test now starts a disposable Postgres 18 rather than using the developer's own, so `./mvnw test` needs only Docker. `@DatabaseTest` composes the setup; `TestDatabaseWiringTest` proves the suite is really on the container and not falling back to localhost. |
 | F15 | `920855f` | **CI** — `.github/workflows/ci.yml`, `./mvnw test` on every push and PR. Portable only because of D22. First green run: 110 tests on a GitHub runner. Adding a workflow needed the `workflow` scope on the push token. |
+| F16 | `4b62e2e` | **Containerised** — multi-stage Dockerfile (JDK builds, JRE runs, non-root, heap sized from the container limit) plus `application-prod.properties`. Verified by running the image against a throwaway Postgres: 4s boot, Flyway applies V1+V2, full auth/progress/leaderboard round-trip, 401 on a wrong secret. |
+| F17 | *(this commit)* | **Deploy pipeline written, not yet run** — `deploy/azure-setup.sh` (idempotent: Container Apps + Postgres B1ms + secrets) and `.github/workflows/deploy.yml` (gated on CI passing on main, pushes to ghcr.io, rolls out, polls `/health`). Waiting on Tarik's Azure subscription. |
 
 **Verification approach:** `./mvnw test` (88 cases, all layers) is the automated net;
 `docs/SpaceSurvivors.postman_collection.json` run with `newman` is the end-to-end
@@ -654,9 +656,24 @@ Twice an integration test found what a mocked one structurally could not (D20, a
    a "delete IPs older than N days" job before this is public.
 3. **Pagination** — the board is capped at 100 rows and there is no `page`. Fine now,
    wrong the day there are more players than that.
-4. **Least-privilege DB roles** — D3 debt, before any deploy.
-5. **Azure deploy** — Postgres Flexible Server + Container App, secrets from Key Vault.
-   Nothing is deployed; the whole thing is localhost.
+4. **Least-privilege DB roles** — D3 debt. Now concrete: the container connects as the
+   Postgres server *admin*, because nothing has created the `ss_app` role that
+   `application.properties` defaults to. Listed in `deploy/README.md` under known debt.
+5. **Azure deploy — everything is written, nothing is created.** `deploy/README.md` has the
+   steps; `deploy/azure-setup.sh` builds the resources and `deploy.yml` ships on every green
+   push to main. Blocked only on the subscription (Tarik is opening one, 2026-09-10).
+   Decisions taken while writing it: **Container Apps** over App Service because it scales to
+   zero and this traffic is a handful of friends; **ghcr.io** over Azure Container Registry
+   because ACR is a flat ~$5/month for storage the repository already provides free;
+   **container-app secrets** over Key Vault, which is the right answer once a second service
+   needs the same secret and an extra moving part until then; **OIDC** over a service-principal
+   secret, so nothing long-lived to leak sits in the repository.
+   The one line that mattered most is `server.forward-headers-strategy=framework` in the prod
+   profile: behind an ingress every request arrives from the proxy's address, so without it the
+   rate limiter would put every player on earth into a single thirty-token bucket and `last_ip`
+   would record the proxy for everyone. `ClientAddress` and `RateLimitFilter` were already
+   written expecting it — they read `getRemoteAddr` and never parse `X-Forwarded-For`, because
+   a header anyone can send is only trustworthy once a filter we control has overwritten it.
 6. **Firebase auth** — optional now that D19 exists; it would add "recover my account on a
    new phone", which is the honest gap in device-based identity. `player_id` stays stable,
    so still cheap to add. `docs/firebase-setup.md` (from the scrapped repo) needs rewriting.
