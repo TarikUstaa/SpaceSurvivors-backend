@@ -66,44 +66,20 @@ Azure returns a short-lived token. Nothing long-lived is stored in the repositor
 is no client secret to leak or rotate — which matters, because that secret would be a key to
 the whole subscription.
 
-Create an app registration and let it act on the resource group:
-
 ```bash
-SUB=$(az account show --query id -o tsv)
-RG=spacesurvivors-rg
-
-APP_ID=$(az ad app create --display-name spacesurvivors-deploy --query appId -o tsv)
-az ad sp create --id "$APP_ID"
-
-az role assignment create \
-  --assignee "$APP_ID" \
-  --role Contributor \
-  --scope "/subscriptions/$SUB/resourceGroups/$RG"
+./deploy/azure-oidc.sh
 ```
 
-Then tell Azure to trust this repository's main branch — and only that:
+It registers an identity, scopes it to this one resource group (not the subscription), adds a
+federated credential pinned to `repo:TarikUstaa/SpaceSurvivors-backend:ref:refs/heads/main`,
+and prints the five values to paste in. That `subject` is the security boundary: a token
+GitHub mints for another repository, or for another branch, does not match and is refused, so
+a fork or a pull request cannot deploy no matter what its workflow file says.
 
-```bash
-az ad app federated-credential create --id "$APP_ID" --parameters '{
-  "name": "github-main",
-  "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:TarikUstaa/SpaceSurvivors-backend:ref:refs/heads/main",
-  "audiences": ["api://AzureADTokenExchange"]
-}'
-```
-
-The `subject` line is the security boundary: a token minted for any other repository, or for
-a branch other than `main`, will not be accepted.
-
-Finally add five repository secrets under **Settings → Secrets and variables → Actions**:
-
-| secret | value |
-| --- | --- |
-| `AZURE_CLIENT_ID` | the `$APP_ID` printed above |
-| `AZURE_TENANT_ID` | `az account show --query tenantId -o tsv` |
-| `AZURE_SUBSCRIPTION_ID` | `az account show --query id -o tsv` |
-| `AZURE_RG` | `spacesurvivors-rg` |
-| `AZURE_APP` | `spacesurvivors-api` |
+Add what it prints under **Settings → Secrets and variables → Actions**:
+`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_RG`, `AZURE_APP`.
+None of the five is a password — they are identifiers. The federated credential is what makes
+the arrangement safe, which is exactly why there is no client secret to guard.
 
 ## 3. Point the game at it
 
