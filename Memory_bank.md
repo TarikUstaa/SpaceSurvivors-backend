@@ -632,7 +632,9 @@ which happens at the end of every run.
 | F14 | `d3e4763`, `c5ca96e`, `5129677` | **Testcontainers** — D22. Every database test now starts a disposable Postgres 18 rather than using the developer's own, so `./mvnw test` needs only Docker. `@DatabaseTest` composes the setup; `TestDatabaseWiringTest` proves the suite is really on the container and not falling back to localhost. |
 | F15 | `920855f` | **CI** — `.github/workflows/ci.yml`, `./mvnw test` on every push and PR. Portable only because of D22. First green run: 110 tests on a GitHub runner. Adding a workflow needed the `workflow` scope on the push token. |
 | F16 | `4b62e2e` | **Containerised** — multi-stage Dockerfile (JDK builds, JRE runs, non-root, heap sized from the container limit) plus `application-prod.properties`. Verified by running the image against a throwaway Postgres: 4s boot, Flyway applies V1+V2, full auth/progress/leaderboard round-trip, 401 on a wrong secret. |
-| F17 | *(this commit)* | **Deploy pipeline written, not yet run** — `deploy/azure-setup.sh` (idempotent: Container Apps + Postgres B1ms + secrets) and `.github/workflows/deploy.yml` (gated on CI passing on main, pushes to ghcr.io, rolls out, polls `/health`). Waiting on Tarik's Azure subscription. |
+| F17 | `43ca04b`, `050420f` | **Deploy pipeline** — `deploy/azure-setup.sh` (idempotent) and `.github/workflows/deploy.yml` (gated on CI passing on main, pushes to ghcr.io, rolls out, polls `/health`), plus `azure-oidc.sh` for the federated identity. |
+| F18 | `123b3ca`, `1c6e13c`, `e0c92ee`, `610712f`, `3c6150c` | **Live on Azure** (2026-09-10). Five things broke on the way and every one was setup, not code: Free Trial refuses Postgres in West Europe (Italy North instead); `tr … \| head` under `pipefail` killed the password generator; `db create` takes `--name`, and answers `--database-name` with help and exit 0; the same trap in `firewall-rule create --rule-name`, which had never once worked; `az containerapp` cannot install on macOS 26 (pip's truststore reads an empty `platform.mac_ver()`), so the script drives ARM through `az rest`; `buildx` needed `setup-buildx-action` for the GHA cache; ghcr rejects the owner's capitalisation; and GitHub sent the *immutable* OIDC subject (`owner@id/repo@id`), which Azure compares verbatim. |
+| F19 | `b8d6e4d`, `bc085b0`, `46079fa` | **Hardening.** Least-privilege DB roles (D3, finally paid): `ss_migrate` owns the schema and only Flyway uses it; `ss_app` may only DML and has no privilege on `flyway_schema_history`. Secrets moved to Key Vault, fetched by the app's managed identity — `deploy/.env.azure` now holds two names and no password. Also fixed a flaky forgery test (below). |
 
 **Verification approach:** `./mvnw test` (88 cases, all layers) is the automated net;
 `docs/SpaceSurvivors.postman_collection.json` run with `newman` is the end-to-end
@@ -641,6 +643,28 @@ Twice an integration test found what a mocked one structurally could not (D20, a
 `updated_at` trigger).
 
 ---
+
+## D24 — a test that forged nothing (2026-09-10)
+
+`AuthenticationIntegrationTest.refusesATamperedToken` failed CI with
+`Status expected:<401> but was:<200>` — reading exactly like authentication accepting a
+forgery. It was not. The test never produced one.
+
+An HS256 signature is 32 bytes, base64url-encoded in 43 characters: 258 bits of alphabet
+carrying 256 bits of signature. The last character therefore contributes only **four**
+meaningful bits, so the alphabet falls into groups of four — `A`-`D`, `E`-`H`, … — that decode
+to an identical final byte. The test replaced the last character with `A` (or `B` if it was
+already `A`). Whenever the signature ended in `A`, `B`, `C` or `D`, that changed the *text* and
+not the *signature*: the "forged" token was the genuine one and 200 was correct.
+
+Four characters in sixty-four — it failed about **6% of runs**, and always looked like a
+security hole rather than an encoding artefact. Now it flips the *first* signature character
+(a full six bits, always significant) and asserts the token actually differs.
+
+**The general lesson, and the third variant of it this project has hit:** a test that
+manipulates an encoded value has to manipulate the *decoded* one, or it is asserting about a
+string rather than about the thing the string represents. Alongside D20/D21/D22's "assert the
+wiring": here the wiring was fine and the *stimulus* was fake.
 
 ## Open / next
 
@@ -656,24 +680,19 @@ Twice an integration test found what a mocked one structurally could not (D20, a
    a "delete IPs older than N days" job before this is public.
 3. **Pagination** — the board is capped at 100 rows and there is no `page`. Fine now,
    wrong the day there are more players than that.
-4. **Least-privilege DB roles** — D3 debt. Now concrete: the container connects as the
-   Postgres server *admin*, because nothing has created the `ss_app` role that
-   `application.properties` defaults to. Listed in `deploy/README.md` under known debt.
-5. **Azure deploy — everything is written, nothing is created.** `deploy/README.md` has the
-   steps; `deploy/azure-setup.sh` builds the resources and `deploy.yml` ships on every green
-   push to main. Blocked only on the subscription (Tarik is opening one, 2026-09-10).
-   Decisions taken while writing it: **Container Apps** over App Service because it scales to
-   zero and this traffic is a handful of friends; **ghcr.io** over Azure Container Registry
-   because ACR is a flat ~$5/month for storage the repository already provides free;
-   **container-app secrets** over Key Vault, which is the right answer once a second service
-   needs the same secret and an extra moving part until then; **OIDC** over a service-principal
-   secret, so nothing long-lived to leak sits in the repository.
-   The one line that mattered most is `server.forward-headers-strategy=framework` in the prod
-   profile: behind an ingress every request arrives from the proxy's address, so without it the
-   rate limiter would put every player on earth into a single thirty-token bucket and `last_ip`
-   would record the proxy for everyone. `ClientAddress` and `RateLimitFilter` were already
-   written expecting it — they read `getRemoteAddr` and never parse `X-Forwarded-For`, because
-   a header anyone can send is only trustworthy once a filter we control has overwritten it.
+4. ~~**Least-privilege DB roles**~~ — **done 2026-09-10** (`b8d6e4d`). See F19.
+5. ~~**Azure deploy**~~ — **live 2026-09-10.**
+   `https://spacesurvivors-api.salmonmeadow-a79134b3.italynorth.azurecontainerapps.io`
+   Container App (scales to zero) + Postgres B1ms + Key Vault, Italy North, deployed by CI on
+   every green push to main. Unity's `BackendConfig.DefaultBaseUrl` points at it.
+   **The one open piece:** Postgres still admits any Azure service, because a Container App's
+   outbound IP is not promised to be stable and the real fix (private networking) means
+   recreating the server *and* the environment — which changes the public API hostname the
+   game ships with. Tarik's call, deferred 2026-09-10. The connection needs password + TLS
+   regardless.
+   **Free Trial expires ~30 days in**; without an upgrade to Pay-As-You-Go the subscription is
+   disabled and the service stops. Spending limit is on, so nothing is ever charged silently.
+
 6. **Firebase auth** — optional now that D19 exists; it would add "recover my account on a
    new phone", which is the honest gap in device-based identity. `player_id` stays stable,
    so still cheap to add. `docs/firebase-setup.md` (from the scrapped repo) needs rewriting.
