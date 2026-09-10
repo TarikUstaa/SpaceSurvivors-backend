@@ -48,6 +48,16 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
+      # github.repository_owner keeps the account's capitalisation — "TarikUstaa" — and a
+      # container registry rejects that outright: "repository name must be lowercase". Fold it
+      # once here, together with the sha, so the three places that name the image cannot drift
+      # apart or repeat the workflow_run fallback expression.
+      - name: Work out the image name
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE=ghcr.io/$owner/spacesurvivors-backend" >> "$GITHUB_ENV"
+          echo "SHA=${{ github.event.workflow_run.head_sha || github.sha }}" >> "$GITHUB_ENV"
+
       # Required before the build: the runner's default docker driver cannot write a cache to
       # anywhere but the local layer store, so `cache-to: type=gha` fails immediately with
       # "buildx failed" and a link to the cache-backends page. This swaps in the
@@ -71,8 +81,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/spacesurvivors-backend:latest
-            ghcr.io/${{ github.repository_owner }}/spacesurvivors-backend:${{ github.event.workflow_run.head_sha || github.sha }}
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ env.SHA }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -92,7 +102,7 @@ jobs:
           az containerapp update \
             --resource-group "${{ secrets.AZURE_RG }}" \
             --name "${{ secrets.AZURE_APP }}" \
-            --image "ghcr.io/${{ github.repository_owner }}/spacesurvivors-backend:${{ github.event.workflow_run.head_sha || github.sha }}"
+            --image "${{ env.IMAGE }}:${{ env.SHA }}"
 
       # A deploy that reports success while the container is crash-looping is worse than one
       # that fails, so confirm the thing is actually answering before calling it done.
