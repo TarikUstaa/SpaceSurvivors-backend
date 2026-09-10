@@ -123,11 +123,19 @@ fi
 # internet" — the container app's outbound address is not fixed, so it cannot be listed.
 # Everything still needs the password and TLS. Narrowing this to a private VNet is the
 # proper answer and costs more; noted rather than done.
+#
+# -s names the server and -n names the rule; there is no --rule-name, and passing one makes
+# the CLI print its help and exit 0 — so this step silently did nothing for a while and was
+# only noticed because `--public-access 0.0.0.0` above had already added an equivalent rule
+# during server creation. Hence the check afterwards.
 say "Firewall rule for Azure-internal callers"
 az postgres flexible-server firewall-rule create \
-    --resource-group "$RG" --name "$PG_SERVER" \
-    --rule-name allow-azure-services \
+    -g "$RG" -s "$PG_SERVER" -n allow-azure-services \
     --start-ip-address 0.0.0.0 --end-ip-address 0.0.0.0 -o none 2>/dev/null || true
+
+az postgres flexible-server firewall-rule list -g "$RG" -s "$PG_SERVER" \
+    --query "[?startIpAddress=='0.0.0.0'] | length(@)" -o tsv | grep -qv '^0$' \
+    || { echo "No rule admitting Azure services — the app will not reach the database."; exit 1; }
 
 # --name, not --database-name: the CLI rejects the longer spelling by printing its help text
 # and exiting 0, so a `|| true` here would hide the fact that nothing was created — which is
