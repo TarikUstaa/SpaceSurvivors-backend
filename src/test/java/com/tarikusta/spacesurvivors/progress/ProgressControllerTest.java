@@ -1,7 +1,7 @@
 package com.tarikusta.spacesurvivors.progress;
 
-import com.tarikusta.spacesurvivors.domain.NotFoundException;
-import com.tarikusta.spacesurvivors.domain.TooLargeException;
+import com.tarikusta.spacesurvivors.exception.NotFoundException;
+import com.tarikusta.spacesurvivors.exception.TooLargeException;
 import com.tarikusta.spacesurvivors.web.ApiExceptionHandler;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

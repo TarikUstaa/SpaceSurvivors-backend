@@ -1,4 +1,4 @@
-package com.tarikusta.spacesurvivors.domain;
+package com.tarikusta.spacesurvivors.exception;
 
 /**
  * The input is well formed but breaks a rule of the game — an unknown mode, a run the

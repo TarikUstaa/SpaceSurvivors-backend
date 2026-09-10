@@ -1,4 +1,4 @@
-package com.tarikusta.spacesurvivors.domain;
+package com.tarikusta.spacesurvivors.exception;
 
 /** The payload is bigger than this application is willing to store. */
 public class TooLargeException extends DomainException {

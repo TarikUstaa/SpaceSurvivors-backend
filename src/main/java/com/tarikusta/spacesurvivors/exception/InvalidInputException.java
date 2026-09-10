@@ -1,4 +1,4 @@
-package com.tarikusta.spacesurvivors.domain;
+package com.tarikusta.spacesurvivors.exception;
 
 /**
  * The input is malformed — a name of the wrong length, a progress blob that is not an

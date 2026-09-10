@@ -1,6 +1,6 @@
 package com.tarikusta.spacesurvivors.leaderboard;
 
-import com.tarikusta.spacesurvivors.domain.RuleViolationException;
+import com.tarikusta.spacesurvivors.exception.RuleViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;

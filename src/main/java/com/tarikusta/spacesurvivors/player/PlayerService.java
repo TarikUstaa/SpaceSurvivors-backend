@@ -2,10 +2,10 @@ package com.tarikusta.spacesurvivors.player;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.tarikusta.spacesurvivors.domain.AlreadyTakenException;
-import com.tarikusta.spacesurvivors.domain.AuthenticationFailedException;
-import com.tarikusta.spacesurvivors.domain.InvalidInputException;
-import com.tarikusta.spacesurvivors.domain.NotFoundException;
+import com.tarikusta.spacesurvivors.exception.AlreadyTakenException;
+import com.tarikusta.spacesurvivors.exception.AuthenticationFailedException;
+import com.tarikusta.spacesurvivors.exception.InvalidInputException;
+import com.tarikusta.spacesurvivors.exception.NotFoundException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;

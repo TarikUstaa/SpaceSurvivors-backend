@@ -1,4 +1,4 @@
-package com.tarikusta.spacesurvivors.domain;
+package com.tarikusta.spacesurvivors.exception;
 
 /**
  * Base for the things this application refuses to do.

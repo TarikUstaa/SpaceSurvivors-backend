@@ -1,4 +1,4 @@
-package com.tarikusta.spacesurvivors.domain;
+package com.tarikusta.spacesurvivors.exception;
 
 /** The thing being asked for does not exist. */
 public class NotFoundException extends DomainException {

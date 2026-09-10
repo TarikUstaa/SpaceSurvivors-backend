@@ -1,9 +1,9 @@
 package com.tarikusta.spacesurvivors.player;
 
-import com.tarikusta.spacesurvivors.domain.AlreadyTakenException;
-import com.tarikusta.spacesurvivors.domain.AuthenticationFailedException;
-import com.tarikusta.spacesurvivors.domain.InvalidInputException;
-import com.tarikusta.spacesurvivors.domain.NotFoundException;
+import com.tarikusta.spacesurvivors.exception.AlreadyTakenException;
+import com.tarikusta.spacesurvivors.exception.AuthenticationFailedException;
+import com.tarikusta.spacesurvivors.exception.InvalidInputException;
+import com.tarikusta.spacesurvivors.exception.NotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;

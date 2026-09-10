@@ -1,11 +1,11 @@
 package com.tarikusta.spacesurvivors.web;
 
-import com.tarikusta.spacesurvivors.domain.AlreadyTakenException;
-import com.tarikusta.spacesurvivors.domain.AuthenticationFailedException;
-import com.tarikusta.spacesurvivors.domain.InvalidInputException;
-import com.tarikusta.spacesurvivors.domain.NotFoundException;
-import com.tarikusta.spacesurvivors.domain.RuleViolationException;
-import com.tarikusta.spacesurvivors.domain.TooLargeException;
+import com.tarikusta.spacesurvivors.exception.AlreadyTakenException;
+import com.tarikusta.spacesurvivors.exception.AuthenticationFailedException;
+import com.tarikusta.spacesurvivors.exception.InvalidInputException;
+import com.tarikusta.spacesurvivors.exception.NotFoundException;
+import com.tarikusta.spacesurvivors.exception.RuleViolationException;
+import com.tarikusta.spacesurvivors.exception.TooLargeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -27,7 +27,7 @@ import java.util.Map;
 /**
  * The single place where a failure becomes an HTTP response.
  *
- * <p>Services throw {@link com.tarikusta.spacesurvivors.domain.DomainException}s that say
+ * <p>Services throw {@link com.tarikusta.spacesurvivors.exception.DomainException}s that say
  * what went wrong in the application's own words and carry no status code; choosing the
  * status happens here and nowhere else. That is what lets the service layer stay free of
  * Spring web types.</p>

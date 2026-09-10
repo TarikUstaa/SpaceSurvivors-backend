@@ -2,7 +2,7 @@ package com.tarikusta.spacesurvivors.leaderboard;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.tarikusta.spacesurvivors.domain.RuleViolationException;
+import com.tarikusta.spacesurvivors.exception.RuleViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 

@@ -1,8 +1,8 @@
 package com.tarikusta.spacesurvivors.progress;
 
-import com.tarikusta.spacesurvivors.domain.InvalidInputException;
-import com.tarikusta.spacesurvivors.domain.NotFoundException;
-import com.tarikusta.spacesurvivors.domain.TooLargeException;
+import com.tarikusta.spacesurvivors.exception.InvalidInputException;
+import com.tarikusta.spacesurvivors.exception.NotFoundException;
+import com.tarikusta.spacesurvivors.exception.TooLargeException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
