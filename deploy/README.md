@@ -71,10 +71,26 @@ the whole subscription.
 ```
 
 It registers an identity, scopes it to this one resource group (not the subscription), adds a
-federated credential pinned to `repo:TarikUstaa/SpaceSurvivors-backend:ref:refs/heads/main`,
-and prints the five values to paste in. That `subject` is the security boundary: a token
-GitHub mints for another repository, or for another branch, does not match and is refused, so
-a fork or a pull request cannot deploy no matter what its workflow file says.
+federated credential pinned to this repository's main branch, and prints the five values to
+paste in. That `subject` is the security boundary: Azure compares it verbatim against the
+claim in the token GitHub minted, so a token for another repository or another branch does not
+match — a fork or a pull request cannot deploy no matter what its workflow file says.
+
+**If the deploy fails with `AADSTS700213: No matching federated identity record found`**, read
+the subject it quotes. GitHub has two spellings of that claim and which one an account sends is
+not something the workflow chooses:
+
+```
+repo:OWNER/REPO:ref:refs/heads/main                             ← plain
+repo:OWNER@<owner id>/REPO@<repo id>:ref:refs/heads/main        ← immutable, survives a rename
+```
+
+Verbatim comparison means a credential for one does not satisfy the other. Both ids are in the
+error message; re-run with them and the script adds the second credential alongside the first:
+
+```bash
+GH_OWNER_ID=<owner id> GH_REPO_ID=<repo id> ./deploy/azure-oidc.sh
+```
 
 Add what it prints under **Settings → Secrets and variables → Actions**:
 `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_RG`, `AZURE_APP`.
