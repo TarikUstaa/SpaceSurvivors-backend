@@ -151,10 +151,26 @@ class AuthenticationIntegrationTest {
     void refusesATamperedToken() throws Exception {
         String token = obtainToken(device());
 
-        // Flip the last character of the signature. Everything else about the token is
-        // still valid — this is exactly what the old device header could not detect.
-        char last = token.charAt(token.length() - 1);
-        String forged = token.substring(0, token.length() - 1) + (last == 'A' ? 'B' : 'A');
+        // Flip the FIRST character of the signature, not the last. Everything else about the
+        // token stays valid — this is exactly what the old device header could not detect.
+        //
+        // Not the last character, because that one is a trap. An HS256 signature is 32 bytes,
+        // which base64url encodes in 43 characters — 258 bits of alphabet carrying 256 bits of
+        // signature. The final character therefore contributes only four meaningful bits, and
+        // the alphabet falls into groups of four ('A'-'D', 'E'-'H', …) that decode to an
+        // identical last byte. Replacing a trailing 'A', 'B', 'C' or 'D' with 'A' or 'B'
+        // changes the text and not the signature, so the "forged" token is the real one and
+        // the server rightly answers 200. That is one token in sixteen: a test that failed
+        // roughly 6% of the time, always looking like authentication had let a forgery
+        // through. Every character before the last carries a full six bits, so changing one
+        // always changes the signature.
+        int signature = token.lastIndexOf('.') + 1;
+        char first = token.charAt(signature);
+        String forged = token.substring(0, signature)
+                + (first == 'A' ? 'B' : 'A')
+                + token.substring(signature + 1);
+
+        assertThat(forged).isNotEqualTo(token);
 
         mvc.perform(get("/v1/player").header("Authorization", "Bearer " + forged))
                 .andExpect(status().isUnauthorized());
