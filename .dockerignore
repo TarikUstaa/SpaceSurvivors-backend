@@ -1,0 +1,21 @@
+# Everything here is either rebuilt inside the image, useless to it, or must never enter it.
+# The build context is uploaded to the daemon before the first instruction runs, so this is
+# also what keeps that upload small.
+
+target/
+.git/
+.idea/
+.vscode/
+*.iml
+
+# Never. This holds the real database password and JWT signing key for a developer machine;
+# a file copied into an image is in the image forever, in a layer anyone who can pull it can
+# read — deleting it in a later instruction does not remove it.
+src/main/resources/application-local.properties
+
+docs/
+postman/
+.postman/
+HELP.md
+README.md
+Memory_bank.md
