@@ -36,6 +36,7 @@ class OpenApiDocsTest {
                 .andExpect(jsonPath("$.paths['/health']").exists())
                 // Declared explicitly because the header is read by a filter, so no
                 // controller signature mentions it and nothing would infer it.
-                .andExpect(jsonPath("$.components.securitySchemes.deviceAuth.scheme").value("Device"));
+                .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.scheme").value("bearer"))
+                .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.bearerFormat").value("JWT"));
     }
 }

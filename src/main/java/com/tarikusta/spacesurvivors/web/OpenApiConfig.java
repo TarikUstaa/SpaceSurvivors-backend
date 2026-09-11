@@ -18,11 +18,14 @@ import org.springframework.context.annotation.Configuration;
  * nothing in a controller signature reveals that every call needs an {@code Authorization}
  * header — without this, the browsable docs would let you try a request and get a
  * confusing 401.</p>
+ *
+ * <p>Not served in the deployment: {@code springdoc.api-docs.enabled} is false in the prod
+ * profile, so this describes the API to whoever is working on it, not to the internet.</p>
  */
 @Configuration
 public class OpenApiConfig {
 
-    private static final String SCHEME = "deviceAuth";
+    private static final String SCHEME = "bearerAuth";
 
     @Bean
     public OpenAPI spaceSurvivorsApi() {
@@ -33,14 +36,24 @@ public class OpenApiConfig {
                         .description("""
                                 Cloud save and leaderboards for the SpaceSurvivors game.
 
-                                Identity travels as `Authorization: Device <device-id>`. That is
-                                identification, not authentication — the server believes whatever
-                                device id it is sent. Verified tokens replace the scheme later.
+                                Every endpoint except `/health` and `POST /v1/auth/token` needs
+                                `Authorization: Bearer <token>`.
+
+                                A client gets that token by posting its device id and device secret
+                                to `/v1/auth/token`; the server checks the secret against a BCrypt
+                                hash and signs a token that is good for an hour. The device secret
+                                itself is sent nowhere else.
+
+                                To try a request here: call `/v1/auth/token`, copy the `token` from
+                                the response, click **Authorize** and paste it.
                                 """))
                 .addSecurityItem(new SecurityRequirement().addList(SCHEME))
                 .components(new Components().addSecuritySchemes(SCHEME, new SecurityScheme()
                         .type(SecurityScheme.Type.HTTP)
-                        .scheme("Device")
-                        .description("The device id generated once by the client and stored on the device.")));
+                        .scheme("bearer")
+                        .bearerFormat("JWT")
+                        .description("""
+                                A signed access token from POST /v1/auth/token. Expires after an
+                                hour; the client re-authenticates with its device secret.""")));
     }
 }

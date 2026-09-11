@@ -666,6 +666,33 @@ manipulates an encoded value has to manipulate the *decoded* one, or it is asser
 string rather than about the thing the string represents. Alongside D20/D21/D22's "assert the
 wiring": here the wiring was fine and the *stimulus* was fake.
 
+## D25 — the docs were the one thing the deployment published (2026-09-11)
+
+`/swagger-ui.html` and `/v3/api-docs` were on `SecurityConfig`'s unauthenticated allow-list,
+which is right on a laptop and wrong on the internet. The deployed service was handing anyone
+who asked the complete map of the API: every path, every field, every validation rule, and a
+form to fire requests from.
+
+That is not a vulnerability by itself — every endpoint still demands a signed token, and none
+of them leaked. It is a free head start, and nobody on the public internet has a use for it.
+
+**Why not simply require a token for those paths.** Swagger UI is a page a *browser* loads,
+and a browser cannot attach a bearer token to the request for the page itself. Putting docs
+"behind authentication" means a session login — a cookie, a form — which this service
+deliberately does not have: it is stateless and every request carries its own token. So the
+honest options were "public" or "not served", and the deployment does not need them served.
+The backoffice introduces exactly that kind of login; the docs can move behind it then.
+
+`springdoc.api-docs.enabled=false` in the prod profile, and `SecurityConfig` now **reads that
+same property** to decide whether the doc paths are public. Tying them together is the point:
+neither can be changed into a lie by editing the other. `OpenApiDocsDisabledTest` asserts it
+against a real context, deliberately paying for a second container — asserting it against the
+context that has the docs *on* would be asserting nothing (see D20/D21/D22/D24).
+
+Fixed the same day: the document had also gone stale. It still described
+`Authorization: Device <device-id>` and said "the server believes whatever device id it is
+sent" — true before D19 replaced it with signed tokens, a year out of date since.
+
 ## Open / next
 
 *Priority order.*
