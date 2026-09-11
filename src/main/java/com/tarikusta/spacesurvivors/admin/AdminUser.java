@@ -92,6 +92,16 @@ public class AdminUser {
         return passwordHash;
     }
 
+    /**
+     * Replace the stored hash. Takes a hash and not a password, deliberately: this class has
+     * no encoder and should not acquire one, so the only value it can be handed is one that
+     * has already been through {@code PasswordEncoder}. A setter taking plaintext is a
+     * setter somebody eventually calls with plaintext.
+     */
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
+
     public String getRole() {
         return role;
     }

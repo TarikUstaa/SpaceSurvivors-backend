@@ -21,7 +21,9 @@
         <a th:href="@{/admin/leaderboard}"
            th:classappend="${active == 'leaderboard'} ? 'active'">Leaderboard</a>
     </nav>
-    <span class="who" th:text="${admin}">admin</span>
+    <!-- The signed-in name is also the way to the account page; there is only one thing on it. -->
+    <a class="who" th:href="@{/admin/password}" th:text="${admin}"
+       th:classappend="${active == 'password'} ? 'active'">admin</a>
     <!--
       Logout is a POST because it changes state, and a GET logout is a link any other site
       can embed to sign an administrator out. The form carries the CSRF token like every

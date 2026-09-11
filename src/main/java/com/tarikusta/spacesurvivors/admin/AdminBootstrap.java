@@ -59,7 +59,7 @@ public class AdminBootstrap implements ApplicationRunner {
                           PasswordEncoder passwordEncoder,
                           @Value("${app.admin.bootstrap.username:}") String username,
                           @Value("${app.admin.bootstrap.password:}") String password,
-                          @Value("${app.admin.bootstrap.min-password-length:12}") int minPassword) {
+                          @Value("${app.admin.min-password-length:12}") int minPassword) {
         this.admins = admins;
         this.passwordEncoder = passwordEncoder;
         this.username = username == null ? "" : username.trim();

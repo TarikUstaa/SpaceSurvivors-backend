@@ -57,7 +57,8 @@ a { color: var(--accent); }
 .topbar nav { display: flex; gap: 1rem; flex: 1; }
 .topbar nav a { text-decoration: none; color: var(--ink-soft); }
 .topbar nav a:hover, .topbar nav a.active { color: var(--ink); }
-.topbar .who { color: var(--ink-soft); font-size: 0.88rem; }
+.topbar .who { color: var(--ink-soft); font-size: 0.88rem; text-decoration: none; }
+.topbar a.who:hover, .topbar a.who.active { color: var(--ink); }
 
 .linkbutton {
     background: none;
@@ -72,6 +73,10 @@ a { color: var(--accent); }
 
 /* ── page ────────────────────────────────────────────────────────── */
 main { padding: 1.75rem 1.5rem 4rem; max-width: 1100px; margin: 0 auto; }
+main.narrow { max-width: 30rem; }
+
+.hint { font-size: 0.78rem; color: var(--ink-soft); }
+.muted.small { font-size: 0.84rem; }
 
 h1 { font-size: 1.35rem; margin: 0 0 0.35rem; letter-spacing: -0.01em; }
 .subtitle { color: var(--ink-soft); font-size: 0.9rem; margin: 0 0 1.5rem; }
