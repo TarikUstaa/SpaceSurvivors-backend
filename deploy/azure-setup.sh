@@ -51,6 +51,9 @@ ENVIRONMENT="${ENVIRONMENT:-spacesurvivors-env}"
 WORKSPACE="${WORKSPACE:-ss-logs}"
 APP="${APP:-spacesurvivors-api}"
 IMAGE="${IMAGE:-ghcr.io/tarikustaa/spacesurvivors-backend:latest}"
+# Who the backoffice's first administrator is. Not a secret — the password is, and that one
+# is generated below and kept in the vault.
+ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
 API_VERSION="2024-03-01"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -135,6 +138,16 @@ ensure_secret pg-admin-password    "Ss1$(openssl rand -base64 24 | tr -d '/+=')"
 ensure_secret app-db-password      "Ss1$(openssl rand -base64 24 | tr -d '/+=')"
 ensure_secret migrate-db-password  "Ss1$(openssl rand -base64 24 | tr -d '/+=')"
 ensure_secret jwt-secret           "$(openssl rand -hex 32)"   # 32 bytes — HS256 wants that much
+
+# The backoffice's first administrator. Generated rather than chosen, for the same reason the
+# database passwords are: a password typed into a setup script is a password that ends up in a
+# shell history, and this one opens a page with a delete button on it.
+#
+# It matters exactly once. AdminBootstrap creates the account on the first start against an
+# empty admin_user table and ignores these settings from then on, so this is the value to read
+# out of the vault for the first sign-in — and the vault copy becomes a record of what the
+# first password was, not what the current one is.
+ensure_secret admin-password       "$(openssl rand -base64 18 | tr -d '/+=')"
 
 PG_PASSWORD="$(az keyvault secret show --vault-name "$VAULT" -n pg-admin-password --query value -o tsv)"
 
@@ -255,6 +268,7 @@ APP_URL="$ARM/Microsoft.App/containerApps/$APP?api-version=$API_VERSION"
 
 write_app_body() {
     DB_URL="$DB_URL" IMAGE="$IMAGE" LOCATION="$LOCATION" VAULT_URI="$VAULT_URI" \
+    ADMIN_USERNAME="$ADMIN_USERNAME" \
     ENV_ID="/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.App/managedEnvironments/$ENVIRONMENT" \
     python3 - "$1" <<'PY'
 import json, os, sys
@@ -277,7 +291,7 @@ json.dump({
             "ingress": {"external": True, "targetPort": 8080,
                         "transport": "auto", "allowInsecure": False},
             "secrets": [vault("jwt-secret"), vault("app-db-password"),
-                        vault("migrate-db-password")],
+                        vault("migrate-db-password"), vault("admin-password")],
         },
         "template": {
             "containers": [{
@@ -291,6 +305,11 @@ json.dump({
                     {"name": "JWT_SECRET",      "secretRef": "jwt-secret"},
                     {"name": "FLYWAY_USER",     "value": "ss_migrate"},
                     {"name": "FLYWAY_PASSWORD", "secretRef": "migrate-db-password"},
+                    # Read only while admin_user is empty — see admin/AdminBootstrap. Left in
+                    # place afterwards so that losing the account (a dropped table, a fresh
+                    # database) has a way back in that does not involve hand-written SQL.
+                    {"name": "ADMIN_USERNAME",  "value": os.environ["ADMIN_USERNAME"]},
+                    {"name": "ADMIN_PASSWORD",  "secretRef": "admin-password"},
                 ],
             }],
             # min 0 is the whole reason for choosing Container Apps: idle costs nothing. The
