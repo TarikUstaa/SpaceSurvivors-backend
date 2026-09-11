@@ -72,6 +72,20 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc</artifactId>
 		</dependency>
+
+		<!--
+			The backoffice, and the only thing it costs. Thymeleaf renders HTML on the
+			server from templates in src/main/resources/templates, so the admin pages ship
+			inside this same JAR and deploy with it — no second project, no npm, no API for
+			the pages to call. For a handful of internal screens that is the whole feature;
+			a single-page app would add a build, a bundle and a second set of authentication
+			problems in order to show the same table. See admin/AdminController.
+		-->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-thymeleaf</artifactId>
+		</dependency>
+
 		<dependency>
 			<groupId>org.flywaydb</groupId>
 			<artifactId>flyway-database-postgresql</artifactId>

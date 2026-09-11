@@ -2,3 +2,8 @@
 # Deployments do not use this file; they pass DB_PASSWORD through the environment.
 spring.datasource.password=change-me
 app.jwt.secret=at-least-32-bytes-of-random-text-here
+
+# The first backoffice account, created on startup only while admin_user is empty.
+# Pick your own; at least 12 characters. Leave both out and /admin simply has no way in.
+app.admin.bootstrap.username=admin
+app.admin.bootstrap.password=choose-a-local-password

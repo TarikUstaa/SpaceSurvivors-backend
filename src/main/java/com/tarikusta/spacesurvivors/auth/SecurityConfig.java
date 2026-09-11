@@ -4,6 +4,7 @@ import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -65,7 +66,15 @@ public class SecurityConfig {
      *                    otherwise leave them served but refused, and — far worse the other
      *                    way round — a permitAll here would quietly publish them again.
      */
+    /**
+     * Last, and it has to be: this chain declares no {@code securityMatcher}, so it accepts
+     * every request that reached it. Spring Security asks each chain in order and stops at
+     * the first that accepts, so a chain with no matcher placed earlier would answer for
+     * {@code /admin/**} too and the backoffice would never see its own rules. See
+     * {@code admin/AdminSecurityConfig}, which claims that path at order 1.
+     */
     @Bean
+    @Order(2)
     public SecurityFilterChain api(HttpSecurity http,
                                    @Value("${springdoc.api-docs.enabled:true}") boolean docsEnabled)
             throws Exception {

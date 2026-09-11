@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Players · SpaceSurvivors backoffice</title>
+    <link rel="stylesheet" th:href="@{/admin/assets/admin.css}">
+</head>
+<body>
+
+<header class="topbar">
+    <span class="brand">SpaceSurvivors</span>
+    <nav>
+        <a th:href="@{/admin/players}" class="active">Players</a>
+    </nav>
+    <span class="who" th:text="${admin}">admin</span>
+    <!--
+      Logout is a POST because it changes state, and a GET logout is a link any other site
+      can embed to sign an administrator out. The form carries the CSRF token like every
+      other POST here.
+    -->
+    <form th:action="@{/admin/logout}" method="post">
+        <button type="submit" class="linkbutton">Sign out</button>
+    </form>
+</header>
+
+<main>
+    <h1>Players</h1>
+    <p class="subtitle">
+        <span th:text="${playerCount}">0</span> registered,
+        <span th:text="${savedCount}">0</span> with a cloud save. Newest first, times in UTC.
+    </p>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+            <tr>
+                <th>Name</th>
+                <th>Country</th>
+                <th>First seen</th>
+                <th>Last seen</th>
+                <th>Save</th>
+                <th class="num">Board</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="p : ${players}">
+                <td class="name" th:text="${p.displayName}">Name</td>
+                <td class="muted" th:text="${p.country} ?: '—'">—</td>
+                <td class="muted" th:text="${p.firstSeen()}">—</td>
+                <td class="muted" th:text="${p.lastSeen()}">—</td>
+                <td>
+                    <span class="pill yes" th:if="${p.hasSave()}">yes</span>
+                    <span class="pill" th:unless="${p.hasSave()}">no</span>
+                </td>
+                <td class="num" th:text="${p.boardEntries}">0</td>
+            </tr>
+            </tbody>
+        </table>
+        <p class="empty" th:if="${players.isEmpty()}">No players yet.</p>
+    </div>
+</main>
+
+</body>
+</html>

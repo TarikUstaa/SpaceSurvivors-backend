@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sign in · SpaceSurvivors backoffice</title>
+    <link rel="stylesheet" th:href="@{/admin/assets/admin.css}">
+</head>
+<body>
+<div class="signin">
+    <div class="card">
+        <h1>SpaceSurvivors backoffice</h1>
+
+        <!--
+          One message, whatever went wrong. Spring Security redirects here with ?error for a
+          wrong password, an unknown username and a disabled account alike, and telling them
+          apart would be a way to find out which usernames exist.
+        -->
+        <p class="notice error" th:if="${param.error}">Sign-in failed. Check the username and password.</p>
+        <p class="notice info" th:if="${param.logout}">Signed out.</p>
+
+        <!--
+          th:action, not a plain action: it is what makes Thymeleaf add the hidden CSRF token
+          to this form. Written as action="/admin/login" the page would look identical and
+          every sign-in would be refused.
+        -->
+        <form th:action="@{/admin/login}" method="post">
+            <div class="field">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" autocomplete="username" autofocus required>
+            </div>
+            <div class="field">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" autocomplete="current-password" required>
+            </div>
+            <button type="submit" class="primary">Sign in</button>
+        </form>
+    </div>
+</div>
+</body>
+</html>

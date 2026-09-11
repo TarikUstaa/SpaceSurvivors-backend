@@ -66,12 +66,18 @@ class TestDatabaseWiringTest {
         List<String> applied = db.sql("SELECT script FROM flyway_schema_history ORDER BY installed_rank")
                 .query(String.class).list();
 
-        // A container that started empty and now holds the schema means V1 and V2 were
-        // exercised as a new deployment would meet them, not merely validated against a
+        // A container that started empty and now holds the schema means every migration was
+        // exercised as a new deployment would meet it, not merely validated against a
         // database somebody had already migrated by hand months ago.
-        assertThat(applied).hasSize(2);
+        //
+        // The list is spelled out rather than loosely counted, and it is meant to be edited:
+        // adding a migration should fail this once, so whoever adds it says out loud that the
+        // schema changed. A "greater than" check would let a migration appear — or quietly
+        // stop being applied — with nothing to show for it.
+        assertThat(applied).hasSize(3);
         assertThat(applied.getFirst()).contains("init");
-        assertThat(applied.getLast()).contains("device_secret");
+        assertThat(applied.get(1)).contains("device_secret");
+        assertThat(applied.getLast()).contains("admin_user");
     }
 
     @Test
