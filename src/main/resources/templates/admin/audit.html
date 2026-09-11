@@ -30,7 +30,7 @@
             </tr>
             </thead>
             <tbody>
-            <tr th:each="e : ${entries}">
+            <tr th:each="e : ${trail.entries}">
                 <td class="muted" th:text="${e.when()}">—</td>
                 <td class="name" th:text="${e.actor}">admin</td>
                 <td>
@@ -48,14 +48,14 @@
             </tr>
             </tbody>
         </table>
-        <p class="empty" th:if="${entries.isEmpty()}">
+        <p class="empty" th:if="${trail.entries.isEmpty()}">
             Nothing has happened yet. Signing in writes the first line.
         </p>
     </div>
 
-    <p class="muted small" th:if="${total > shown}">
-        Showing the most recent <span th:text="${limit}">200</span> of
-        <span th:text="${total}">0</span> entries.
+    <p class="muted small" th:if="${trail.truncated()}">
+        Showing the most recent <span th:text="${trail.limit}">200</span> of
+        <span th:text="${trail.total}">0</span> entries.
     </p>
 </main>
 

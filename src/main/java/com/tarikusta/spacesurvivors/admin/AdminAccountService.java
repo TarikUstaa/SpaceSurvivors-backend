@@ -30,13 +30,16 @@ public class AdminAccountService {
 
     private final AdminUserRepository admins;
     private final PasswordEncoder passwordEncoder;
+    private final AdminAudit audit;
     private final int minPassword;
 
     public AdminAccountService(AdminUserRepository admins,
                                PasswordEncoder passwordEncoder,
+                               AdminAudit audit,
                                @Value("${app.admin.min-password-length:12}") int minPassword) {
         this.admins = admins;
         this.passwordEncoder = passwordEncoder;
+        this.audit = audit;
         this.minPassword = minPassword;
     }
 
@@ -61,7 +64,8 @@ public class AdminAccountService {
      * looks secure and nobody can ever sign in.</p>
      */
     @Transactional
-    public Result changePassword(String username, String currentPassword, String newPassword) {
+    public Result changePassword(String username, String currentPassword, String newPassword,
+                                 String callerIp) {
         AdminUser admin = admins.findByUsernameIgnoreCase(username).orElse(null);
         if (admin == null) {
             return Result.NO_SUCH_ADMIN;
@@ -87,6 +91,12 @@ public class AdminAccountService {
 
         admin.setPasswordHash(passwordEncoder.encode(next));
         admins.save(admin);
+
+        // Audited here rather than in the controller, and inside this transaction, so the new
+        // credential and the record of it commit together. Only this branch: a refused attempt
+        // changed nothing, and the row worth having is the one where somebody turned a session
+        // they were holding into permanent ownership of the account.
+        audit.passwordChanged(username, callerIp);
 
         log.info("admin '{}' changed their password", username);
         return Result.CHANGED;

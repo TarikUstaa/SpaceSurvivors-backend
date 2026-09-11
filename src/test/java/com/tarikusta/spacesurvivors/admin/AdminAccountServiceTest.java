@@ -29,9 +29,13 @@ class AdminAccountServiceTest {
     private static final String NAME = "operator";
     private static final String CURRENT = "the-current-password";
 
+    private static final String IP = "203.0.113.9";
+
     private final AdminUserRepository admins = mock(AdminUserRepository.class);
     private final PasswordEncoder encoder = new BCryptPasswordEncoder();
-    private final AdminAccountService service = new AdminAccountService(admins, encoder, 12);
+    private final AdminAudit audit = mock(AdminAudit.class);
+    private final AdminAccountService service =
+            new AdminAccountService(admins, encoder, audit, 12);
 
     private AdminUser admin;
 
@@ -48,7 +52,7 @@ class AdminAccountServiceTest {
         String before = admin.getPasswordHash();
 
         AdminAccountService.Result result =
-                service.changePassword(NAME, CURRENT, "a-brand-new-password");
+                service.changePassword(NAME, CURRENT, "a-brand-new-password", IP);
 
         assertThat(result).isEqualTo(AdminAccountService.Result.CHANGED);
         verify(admins).save(admin);
@@ -59,6 +63,10 @@ class AdminAccountServiceTest {
         assertThat(admin.getPasswordHash()).isNotEqualTo(before);
         assertThat(encoder.matches("a-brand-new-password", admin.getPasswordHash())).isTrue();
         assertThat(encoder.matches(CURRENT, admin.getPasswordHash())).isFalse();
+
+        // The change and the record of it are one unit; a change nobody can account for
+        // is the shape of an account quietly taken over.
+        verify(audit).passwordChanged(NAME, IP);
     }
 
     @Test
@@ -67,24 +75,28 @@ class AdminAccountServiceTest {
         String before = admin.getPasswordHash();
 
         AdminAccountService.Result result =
-                service.changePassword(NAME, "not-it", "a-brand-new-password");
+                service.changePassword(NAME, "not-it", "a-brand-new-password", IP);
 
         assertThat(result).isEqualTo(AdminAccountService.Result.WRONG_CURRENT_PASSWORD);
         assertThat(admin.getPasswordHash()).isEqualTo(before);
         verify(admins, never()).save(any());
+
+        // Nothing changed, so nothing is recorded. An audit table that logs attempts as
+        // though they were events is read as one and lies.
+        verify(audit, never()).passwordChanged(anyString(), anyString());
     }
 
     @Test
     @DisplayName("a missing current password is a wrong one, not a crash")
     void treatsNullAsWrong() {
-        assertThat(service.changePassword(NAME, null, "a-brand-new-password"))
+        assertThat(service.changePassword(NAME, null, "a-brand-new-password", IP))
                 .isEqualTo(AdminAccountService.Result.WRONG_CURRENT_PASSWORD);
     }
 
     @Test
     @DisplayName("a new password under the minimum is refused")
     void refusesAShortNewPassword() {
-        assertThat(service.changePassword(NAME, CURRENT, "short"))
+        assertThat(service.changePassword(NAME, CURRENT, "short", IP))
                 .isEqualTo(AdminAccountService.Result.TOO_SHORT);
         verify(admins, never()).save(any());
     }
@@ -95,7 +107,7 @@ class AdminAccountServiceTest {
         // Not pedantry. BCrypt salts every hash, so re-encoding the same password produces a
         // different string and the row would genuinely change — the page would say "changed",
         // and it would be true of the database and false of the password.
-        assertThat(service.changePassword(NAME, CURRENT, CURRENT))
+        assertThat(service.changePassword(NAME, CURRENT, CURRENT, IP))
                 .isEqualTo(AdminAccountService.Result.SAME_AS_CURRENT);
         verify(admins, never()).save(any());
     }
@@ -103,7 +115,7 @@ class AdminAccountServiceTest {
     @Test
     @DisplayName("an account that no longer exists is reported, not ignored")
     void handlesAVanishedAccount() {
-        assertThat(service.changePassword("ghost", CURRENT, "a-brand-new-password"))
+        assertThat(service.changePassword("ghost", CURRENT, "a-brand-new-password", IP))
                 .isEqualTo(AdminAccountService.Result.NO_SUCH_ADMIN);
     }
 }

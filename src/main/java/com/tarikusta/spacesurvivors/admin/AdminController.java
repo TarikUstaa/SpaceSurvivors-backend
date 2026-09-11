@@ -1,12 +1,9 @@
 package com.tarikusta.spacesurvivors.admin;
 
-import com.tarikusta.spacesurvivors.exception.NotFoundException;
+import com.tarikusta.spacesurvivors.auth.ClientAddress;
 import jakarta.servlet.http.HttpServletRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,38 +12,38 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
-import java.util.List;
 import java.util.UUID;
 
 /**
- * The backoffice pages.
+ * The player pages.
  *
  * <p>A plain {@code @Controller}, not a {@code @RestController}: these methods return the
  * <em>name of a template</em> and Thymeleaf renders it on the server. The browser receives
  * finished HTML and runs no JavaScript of ours — there is no second application here, no
- * build step, and no API for the pages to call, because they read the database directly
- * through the same repositories the game's endpoints use.</p>
+ * build step, and no API for the pages to call.</p>
  *
  * <p>Nothing in this class checks who is asking. {@link AdminSecurityConfig} refuses every
  * request to {@code /admin/**} that is not an authenticated administrator before a method
  * here is reached, which is the only place that check should exist: a controller that
  * remembers to verify is a controller that can forget.</p>
+ *
+ * <p>Nothing in this class decides anything either. Every method reads a request, hands it to
+ * {@link AdminPlayerService}, and turns the answer into a page or a redirect — D11. The
+ * deletion used to be the exception, with the confirm-by-name rule, the audit write and the
+ * transaction all sitting in the method below; they moved, and what is left here is the part
+ * that genuinely is about HTTP: which URL to send the browser to, and what to say when it
+ * arrives.</p>
  */
 @Controller
 @RequestMapping("/admin")
 public class AdminController {
 
-    private static final Logger log = LoggerFactory.getLogger(AdminController.class);
+    private final AdminPlayerService players;
+    private final AdminBoardService board;
 
-    private final AdminPlayerQueries players;
-    private final AdminLeaderboardQueries board;
-    private final AdminAudit audit;
-
-    public AdminController(AdminPlayerQueries players, AdminLeaderboardQueries board,
-                           AdminAudit audit) {
+    public AdminController(AdminPlayerService players, AdminBoardService board) {
         this.players = players;
         this.board = board;
-        this.audit = audit;
     }
 
     /**
@@ -67,11 +64,11 @@ public class AdminController {
 
     @GetMapping("/players")
     public String players(Model model, Authentication authentication) {
-        List<AdminPlayerRow> rows = players.listAll();
+        AdminPlayerService.Overview overview = players.overview();
 
-        model.addAttribute("players", rows);
-        model.addAttribute("playerCount", rows.size());
-        model.addAttribute("savedCount", rows.stream().filter(AdminPlayerRow::hasSave).count());
+        model.addAttribute("players", overview.rows());
+        model.addAttribute("playerCount", overview.total());
+        model.addAttribute("savedCount", overview.withSaves());
         model.addAttribute("admin", authentication.getName());
         return "admin/players";
     }
@@ -80,16 +77,13 @@ public class AdminController {
      * One player: their profile, their save, and the scores they hold.
      *
      * <p>A 404 for an id that is not there, rather than an empty page pretending the player
-     * exists. {@code NotFoundException} is the application's own — the same one the game's
-     * endpoints throw — so this needs no opinion about status codes.</p>
+     * exists. The service throws the application's own {@code NotFoundException} — the same one
+     * the game's endpoints throw — so this needs no opinion about status codes.</p>
      */
     @GetMapping("/players/{playerId}")
     public String player(@PathVariable UUID playerId, Model model, Authentication authentication) {
-        AdminPlayerDetail detail = players.findDetail(playerId)
-                .orElseThrow(() -> new NotFoundException("no such player"));
-
-        model.addAttribute("player", detail);
-        model.addAttribute("scores", board.listByPlayer(playerId));
+        model.addAttribute("player", players.detail(playerId));
+        model.addAttribute("scores", board.scoresOf(playerId));
         model.addAttribute("admin", authentication.getName());
         return "admin/player";
     }
@@ -97,51 +91,32 @@ public class AdminController {
     /**
      * Delete a player and everything of theirs.
      *
-     * <p><b>The confirmation is checked here, not in the browser.</b> The form asks for the
-     * player's name to be typed out, and this compares it before deleting anything. That
-     * ordering is the entire point: a dialog is a suggestion to whoever is at the keyboard,
-     * while this is a rule about the request. A request that arrives without the right name —
-     * from a stale tab, a double submit, a script, or a page on another site — does not
-     * delete a player, and no amount of clicking elsewhere changes that.</p>
-     *
-     * <p>The typing is not security theatre either. It is the one irreversible action in the
-     * backoffice, and it is aimed at a row a mis-click could just as easily have chosen; the
-     * name is how the person says <em>which</em> row they meant, not merely that they meant
-     * one.</p>
+     * <p>The rule lives in {@link AdminPlayerService#delete}; what this method owns is the
+     * answer to "where does the browser go now". A refused delete returns to the player, so
+     * the person can see the row still there and read why. A successful one returns to the
+     * list, because the page it came from no longer describes anything.</p>
      */
     @PostMapping("/players/{playerId}/delete")
-    @Transactional
     public String deletePlayer(@PathVariable UUID playerId,
                                @RequestParam(required = false) String confirmName,
                                RedirectAttributes redirect,
                                Authentication authentication,
                                HttpServletRequest request) {
-        AdminPlayerDetail detail = players.findDetail(playerId)
-                .orElseThrow(() -> new NotFoundException("no such player"));
 
-        if (!detail.displayName().equals(confirmName == null ? "" : confirmName.trim())) {
-            redirect.addFlashAttribute("warning",
-                    "Nothing was deleted — the name did not match.");
-            // No audit entry. A refused delete changed nothing, and a log that records
-            // attempts alongside events is one where "deleted" has to be read twice.
-            return "redirect:/admin/players/" + playerId;
-        }
+        AdminPlayerService.Deletion result = players.delete(
+                authentication.getName(), playerId, confirmName, ClientAddress.of(request));
 
-        players.deletePlayer(playerId);
-
-        // Inside the same transaction as the delete above, which is the point: if this row
-        // cannot be written, the delete goes back with it. The name is captured now because
-        // in a moment there will be nowhere left to read it from.
-        audit.playerDeleted(authentication.getName(), playerId, detail.displayName(), request);
-
-        // The save and the scores went with them, by the cascade on those foreign keys. Said
-        // out loud in the log because "deleted a player" undersells what just happened. The
-        // log line is for whoever is tailing the container; admin_audit is the record.
-        log.warn("admin '{}' deleted player {} ('{}') along with their save and scores",
-                authentication.getName(), playerId, detail.displayName());
-
-        redirect.addFlashAttribute("message",
-                "Deleted " + detail.displayName() + ", their save and their scores.");
-        return "redirect:/admin/players";
+        return switch (result.outcome()) {
+            case NAME_DID_NOT_MATCH -> {
+                redirect.addFlashAttribute("warning",
+                        "Nothing was deleted — the name did not match.");
+                yield "redirect:/admin/players/" + playerId;
+            }
+            case DELETED -> {
+                redirect.addFlashAttribute("message",
+                        "Deleted " + result.displayName() + ", their save and their scores.");
+                yield "redirect:/admin/players";
+            }
+        };
     }
 }

@@ -1,15 +1,16 @@
 package com.tarikusta.spacesurvivors.admin;
 
-import com.tarikusta.spacesurvivors.auth.ClientAddress;
-import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
- * Writes the audit trail.
+ * Reads and writes the audit trail.
  *
  * <p><b>One method per kind of event, rather than a general {@code record(action, target,
  * text)}.</b> A general method leaves the wording to whoever calls it, and five call sites
@@ -17,17 +18,24 @@ import java.util.UUID;
  * an {@code action} column that cannot be filtered. Here the sentence for "a player was
  * deleted" is written once, in one place, and every such row reads the same.</p>
  *
+ * <p><b>The caller's address arrives as a {@code String}, not as an {@code HttpServletRequest}.</b>
+ * It used to be the request, and that single parameter quietly decided where every audit call
+ * could live: only code that holds a request can call a method that needs one, so every write
+ * had to happen in a controller, and the rules that surround those writes ended up there with
+ * them. A service that takes a string can be called from another service. The web layer
+ * resolves the address with {@code ClientAddress.of(request)} and passes the answer along.</p>
+ *
  * <h2>What happens when the audit write fails</h2>
  *
  * <p>Two different answers, on purpose.</p>
  *
  * <p>For the actions that change something — {@link #playerDeleted}, {@link #scoreRemoved},
- * {@link #passwordChanged} — this class does nothing to contain a failure. The caller is
- * {@code @Transactional} and the insert joins that transaction, so if the audit row cannot be
- * written the whole thing rolls back and the deletion never happened. That is the property
- * worth having: <em>no destructive action without a record of it</em>. The reverse ordering —
- * delete, then try to log — is what produces a database that quietly disagrees with its own
- * history.</p>
+ * {@link #passwordChanged} — this class does nothing to contain a failure. Its caller is a
+ * {@code @Transactional} service method and the insert joins that transaction, so if the audit
+ * row cannot be written the whole thing rolls back and the deletion never happened. That is the
+ * property worth having: <em>no destructive action without a record of it</em>. The reverse
+ * ordering — delete, then try to log — is what produces a database that quietly disagrees with
+ * its own history.</p>
  *
  * <p>For {@link #signedIn} and {@link #signInFailed} the failure is swallowed and logged.
  * These run inside Spring Security's handlers, outside any transaction of ours, and the
@@ -51,36 +59,63 @@ public class AdminAudit {
     private static final int MAX_TARGET = 128;
     private static final int MAX_SUMMARY = 512;
 
-    private final AdminAuditRepository entries;
+    /**
+     * How many entries the page draws. Large enough that a day's work fits, small enough that
+     * the page stays one query and one screenful of HTML.
+     */
+    private static final int RECENT = 200;
 
-    public AdminAudit(AdminAuditRepository entries) {
-        this.entries = entries;
+    private final AdminAuditRepository store;
+
+    public AdminAudit(AdminAuditRepository store) {
+        this.store = store;
+    }
+
+    // ── reading ────────────────────────────────────────────────────────────────────────
+
+    /**
+     * The recent entries plus the count of all of them, so the page can say it is showing a
+     * slice rather than implying it is showing everything.
+     */
+    public record Trail(List<AdminAuditEntry> entries, long total, int limit) {
+
+        public int shown() {
+            return entries.size();
+        }
+
+        public boolean truncated() {
+            return total > entries.size();
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public Trail recent() {
+        List<AdminAuditEntry> page = store.findAllByOrderByHappenedAtDescAuditIdDesc(Limit.of(RECENT));
+        return new Trail(page, store.count(), RECENT);
     }
 
     // ── the destructive ones: a failure here must take the action down with it ──────────
 
-    public void playerDeleted(String actor, UUID playerId, String displayName,
-                              HttpServletRequest request) {
+    public void playerDeleted(String actor, UUID playerId, String displayName, String callerIp) {
         // The display name goes into the sentence rather than staying a reference, because
         // seconds after this row is written there is no player_profile left to look it up in.
         write(actor, AdminAction.PLAYER_DELETED, String.valueOf(playerId),
-                "deleted player '" + displayName + "', their save and their scores", request);
+                "deleted player '" + displayName + "', their save and their scores", callerIp);
     }
 
-    public void scoreRemoved(String actor, UUID playerId, String mode,
-                             HttpServletRequest request) {
+    public void scoreRemoved(String actor, UUID playerId, String mode, String callerIp) {
         write(actor, AdminAction.SCORE_REMOVED, String.valueOf(playerId),
-                "removed the " + mode + " score", request);
+                "removed the " + mode + " score", callerIp);
     }
 
-    public void passwordChanged(String actor, HttpServletRequest request) {
-        write(actor, AdminAction.PASSWORD_CHANGED, actor, "changed their own password", request);
+    public void passwordChanged(String actor, String callerIp) {
+        write(actor, AdminAction.PASSWORD_CHANGED, actor, "changed their own password", callerIp);
     }
 
     // ── the sign-in ones: never allowed to break the sign-in itself ────────────────────
 
-    public void signedIn(String actor, HttpServletRequest request) {
-        quietly(() -> write(actor, AdminAction.SIGNED_IN, null, "signed in", request));
+    public void signedIn(String actor, String callerIp) {
+        quietly(() -> write(actor, AdminAction.SIGNED_IN, null, "signed in", callerIp));
     }
 
     /**
@@ -88,21 +123,21 @@ public class AdminAudit {
      *                  stored as the actor because on this row the actor is exactly "whoever
      *                  claimed to be this"
      */
-    public void signInFailed(String attempted, HttpServletRequest request) {
+    public void signInFailed(String attempted, String callerIp) {
         quietly(() -> write(attempted, AdminAction.SIGN_IN_FAILED, null,
-                "sign-in refused", request));
+                "sign-in refused", callerIp));
     }
 
     // ── plumbing ───────────────────────────────────────────────────────────────────────
 
     private void write(String actor, AdminAction action, String target, String summary,
-                       HttpServletRequest request) {
-        entries.save(new AdminAuditEntry(
+                       String callerIp) {
+        store.save(new AdminAuditEntry(
                 clip(blankToUnknown(actor), MAX_ACTOR),
                 action,
                 clip(target, MAX_TARGET),
                 clip(summary, MAX_SUMMARY),
-                request == null ? null : ClientAddress.of(request)));
+                callerIp));
     }
 
     private void quietly(Runnable write) {

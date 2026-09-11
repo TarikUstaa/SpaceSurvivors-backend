@@ -1,12 +1,9 @@
 package com.tarikusta.spacesurvivors.admin;
 
-import com.tarikusta.spacesurvivors.leaderboard.LeaderboardService;
+import com.tarikusta.spacesurvivors.auth.ClientAddress;
 import jakarta.servlet.http.HttpServletRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,92 +14,65 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import java.util.UUID;
 
 /**
- * The leaderboard, and the one thing the backoffice may change about it.
+ * The leaderboard page, and the one thing the backoffice may change about it.
  *
- * <p>This is the first page here that writes. Everything up to now only read, and the
- * difference is not the SQL — it is that a wrong click now costs somebody their record. Three
- * things follow from that, and all three are visible below: the removal is a POST and not a
- * link, it names exactly one row, and it leaves an {@code admin_audit} entry saying who did
- * it.</p>
+ * <p>The rules are in {@link AdminBoardService}: which modes exist, what an unrecognised one
+ * falls back to, and what it means to remove a score. What is decided here is HTTP and only
+ * HTTP — that the removal is a POST, and where the browser goes afterwards.</p>
+ *
+ * <p><b>A POST and not a link</b>, because a GET that changes something is a URL a browser may
+ * follow on its own and another site may embed. With the session cookie attached
+ * automatically, an {@code <img src="/admin/leaderboard/delete?...">} on any page an
+ * administrator visits would be a working removal. The form carries the CSRF token that makes
+ * this request distinguishable from that one.</p>
+ *
+ * <p><b>A redirect and not a rendered page</b>, because after a POST a rendered page is one
+ * refresh away from asking the browser to submit it again. The message survives the redirect
+ * as a flash attribute.</p>
  */
 @Controller
 @RequestMapping("/admin/leaderboard")
 public class AdminLeaderboardController {
 
-    private static final Logger log = LoggerFactory.getLogger(AdminLeaderboardController.class);
+    private final AdminBoardService board;
 
-    private static final String DEFAULT_MODE = "infinite";
-
-    private final AdminLeaderboardQueries board;
-    private final AdminAudit audit;
-
-    public AdminLeaderboardController(AdminLeaderboardQueries board, AdminAudit audit) {
+    public AdminLeaderboardController(AdminBoardService board) {
         this.board = board;
-        this.audit = audit;
     }
 
     @GetMapping
     public String board(@RequestParam(required = false) String mode,
                         Model model,
                         Authentication authentication) {
-        String selected = normalise(mode);
+        String selected = board.normalise(mode);
 
         model.addAttribute("mode", selected);
-        model.addAttribute("modes", LeaderboardService.MODES.stream().sorted().toList());
-        model.addAttribute("rows", board.listByMode(selected));
+        model.addAttribute("modes", board.modes());
+        model.addAttribute("rows", board.rows(selected));
         model.addAttribute("admin", authentication.getName());
         return "admin/leaderboard";
     }
 
-    /**
-     * Remove one score.
-     *
-     * <p>A POST, because it changes something — and because a GET would be a link, which is
-     * a thing a browser may follow on its own and another site may embed. With the session
-     * cookie attached automatically, a {@code <img src="/admin/leaderboard/delete?...">} on
-     * any page an administrator visits would be a working removal. The form carries the CSRF
-     * token that makes this request distinguishable from that one.</p>
-     *
-     * <p>Redirects rather than rendering: after a POST, a rendered page is one refresh away
-     * from asking the browser to submit it again. The message survives the redirect as a
-     * flash attribute.</p>
-     */
     @PostMapping("/delete")
-    @Transactional
     public String delete(@RequestParam UUID playerId,
                          @RequestParam String mode,
                          RedirectAttributes redirect,
                          Authentication authentication,
                          HttpServletRequest request) {
-        String selected = normalise(mode);
-        int removed = board.deleteEntry(playerId, selected);
 
-        if (removed == 0) {
+        String selected = board.normalise(mode);
+        boolean removed = board.removeScore(
+                authentication.getName(), playerId, selected, ClientAddress.of(request));
+
+        if (removed) {
+            redirect.addFlashAttribute("message", "Score removed.");
+        } else {
             // Not an error worth a stack trace, but not a success either: somebody else
             // removed it, or the page was stale. Saying "removed" here would be a lie the
-            // administrator has no way to notice — and nothing is audited, because nothing
-            // happened. The return value is what decides that, not the request.
+            // administrator has no way to notice.
             redirect.addFlashAttribute("warning", "That score was already gone.");
-        } else {
-            audit.scoreRemoved(authentication.getName(), playerId, selected, request);
-            log.info("admin '{}' removed the {} score of player {}",
-                    authentication.getName(), selected, playerId);
-            redirect.addFlashAttribute("message", "Score removed.");
         }
 
         return "redirect:/admin/leaderboard?mode=" + selected;
-    }
-
-    /**
-     * Fall back to a real mode rather than failing.
-     *
-     * <p>The parameter reaches this method from a query string, so it can be anything at all.
-     * The list it is checked against is {@link LeaderboardService#MODES} — the same set the
-     * game's own endpoint validates against, so the two cannot drift into disagreeing about
-     * what a mode is.</p>
-     */
-    private String normalise(String mode) {
-        String candidate = mode == null ? "" : mode.trim().toLowerCase();
-        return LeaderboardService.MODES.contains(candidate) ? candidate : DEFAULT_MODE;
     }
 }

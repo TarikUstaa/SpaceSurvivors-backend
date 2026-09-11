@@ -788,6 +788,35 @@ in `@BeforeEach`, then `where audit_id > :since`), which is the `bigserial` key 
 its keep: with a uuid key "everything since this point" could not have been expressed without
 emptying somebody else's rows.
 
+### D29 — D11 applied to the backoffice: the rules left the controllers (2026-09-11)
+
+Tarik asked for the admin controllers to be read back against D11. Four findings, all real.
+
+The root cause was one parameter. **`AdminAudit` took an `HttpServletRequest`**, and only code
+holding a request can call a method that needs one — so every audit write had to happen in a
+controller, and the rules surrounding those writes settled there with them. It now takes a
+`String callerIp`; the web layer resolves it with `ClientAddress.of(request)` and passes the
+answer on. Everything else followed from that.
+
+- **`AdminController.deletePlayer`** held the confirm-by-name rule, the delete, the audit write
+  and a `@Transactional` boundary. Moved to a new **`AdminPlayerService`**. The point is not
+  tidiness: *a rule in a controller only applies to requests shaped like that one*. The check
+  protected the single form that existed, and a second screen or a cleanup job would have
+  deleted players without it with nothing to point that out.
+- **`AdminLeaderboardController`** had the same shape plus `normalise()` — the "an unknown mode
+  falls back instead of failing" rule. Moved to a new **`AdminBoardService`**.
+- **`AdminAccountController`** had gained `@Transactional` earlier the same day purely so the
+  audit row would share the password change's transaction — a transaction boundary in the web
+  layer, put there to compensate for the servlet coupling above. The audit moved into
+  `AdminAccountService.changePassword`, and the annotation went with it.
+- **`AdminAuditController`** owned the `RECENT = 200` limit, which is a fact about the query;
+  `AdminAudit.recent()` returns a `Trail` record and the page is told what it was given.
+
+No controller carries `@Transactional` any more and no controller reaches a repository. The
+integration tests needed **no changes at all** — which is the evidence that the behaviour
+survived the move. `AdminAccountServiceTest` gained two assertions the refactor made possible:
+a successful change records an audit entry, a refused one records nothing.
+
 ## Open / next
 
 *Priority order.*

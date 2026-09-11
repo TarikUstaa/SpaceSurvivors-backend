@@ -1,5 +1,6 @@
 package com.tarikusta.spacesurvivors.admin;
 
+import com.tarikusta.spacesurvivors.auth.ClientAddress;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -182,7 +183,7 @@ public class AdminSecurityConfig {
             // last_login_at holds the most recent sign-in; the audit table holds all of them.
             // Both, because one answers "is this account still in use" at a glance and the
             // other answers "when exactly, and from where", and a single column cannot do both.
-            audit.signedIn(authentication.getName(), request);
+            audit.signedIn(authentication.getName(), ClientAddress.of(request));
 
             log.info("admin '{}' signed in", authentication.getName());
             super.onAuthenticationSuccess(request, response, authentication);
@@ -221,7 +222,7 @@ public class AdminSecurityConfig {
                 throws IOException, ServletException {
             String attempted = request.getParameter("username");
 
-            audit.signInFailed(attempted, request);
+            audit.signInFailed(attempted, ClientAddress.of(request));
             // At warn, not info: a handful of these is somebody mistyping, and a stream of
             // them is the only warning this application gets before an account is guessed.
             log.warn("admin sign-in refused for '{}'", attempted);
