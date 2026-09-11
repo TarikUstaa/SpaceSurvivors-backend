@@ -693,6 +693,53 @@ Fixed the same day: the document had also gone stale. It still described
 `Authorization: Device <device-id>` and said "the server believes whatever device id it is
 sent" — true before D19 replaced it with signed tokens, a year out of date since.
 
+## Backoffice — built and deployed 2026-09-11
+
+Four screens at `/admin`, server-rendered with Thymeleaf in this same JAR: **players** (list),
+**player detail** (account, save, scores, delete), **leaderboard** (per mode, remove a score),
+**password**. Commits `5250a11` … `48a8a90`. 164 tests.
+
+**The shape of it.** A second `SecurityFilterChain` at `@Order(1)` claiming `/admin/**`; the
+API chain took `@Order(2)` and is otherwise untouched. The two halves disagree about every
+security question and that is why they are separate: token vs password, stateless vs session,
+CSRF off vs CSRF on, 401 vs a login page. `admin_user` (V3) is its own table — a player is a
+*device* created on sight, an administrator is a *person* created deliberately, and one table
+with a role column would put every player row one boolean away from administrator.
+
+**No seeded admin.** A migration that inserts one publishes its hash, and a public BCrypt hash
+is a password everybody has. `AdminBootstrap` creates it from `ADMIN_USERNAME`/`ADMIN_PASSWORD`
+only while the table is empty, so the environment can never later overwrite a changed password.
+In Azure the password is a generated Key Vault secret (`admin-password`).
+
+### D26 — the endpoint nobody could exhaust was guarded; the one somebody could was not
+
+`POST /admin/login` had no rate limit. It spends the same ~100 ms BCrypt hash per attempt as
+`/v1/auth/token`, which has been limited since the start — identical denial-of-service lever.
+The asymmetry that made it worse: a device secret is 256 bits of randomness and guessing it is
+not an attack, while an administrator's password was chosen by a person and guessing it is.
+
+Now limited at 10/min, in **its own bucket keyed by path as well as caller** — a shared bucket
+would mean an attack on the login form locks players out of the game, and a busy CGNAT address
+spends the administrator's attempts. Refused as a redirect, not a ProblemDetail: whoever hit it
+is holding a browser.
+
+**The general lesson:** the limiter was written for one endpoint and correctly explained itself
+in terms of "the endpoint that costs a BCrypt hash". A second endpoint with exactly that cost
+was added months later and nothing connected the two. Guard the *property*, not the path.
+
+### D27 — CsrfFilter runs before ExceptionTranslationFilter
+
+A POST to `/admin/login` without a CSRF token answered a bare **401**. `CsrfFilter` sits ahead
+of `ExceptionTranslationFilter`, so its exception is never translated: it leaves the security
+chain, the container dispatches to `/error`, and `/error` is not `/admin/**` — so the *API*
+chain answers it. Fixed with an `accessDeniedHandler` on the admin chain (`CsrfConfigurer`
+picks up whatever `exceptionHandling` registered), redirecting to `/admin/login?expired`. Only
+CSRF failures; a signed-in non-admin keeps the 403.
+
+**Worth remembering beyond this bug:** MockMvc does not perform the error dispatch, so in tests
+the broken behaviour looked like a clean 403. Only driving the deployed service showed the 401.
+A whole class of error-handling behaviour is invisible to MockMvc.
+
 ## Open / next
 
 *Priority order.*
@@ -723,8 +770,10 @@ sent" — true before D19 replaced it with signed tokens, a year out of date sin
 6. **Firebase auth** — optional now that D19 exists; it would add "recover my account on a
    new phone", which is the honest gap in device-based identity. `player_id` stays stable,
    so still cheap to add. `docs/firebase-setup.md` (from the scrapped repo) needs rewriting.
-7. **Backoffice** — raised by Tarik, not started. Needs an admin login separate from the
-   device credential, and really wants a deployment to be worth anything.
+7. ~~**Backoffice**~~ — **live 2026-09-11**, four screens. See the section above. Still open
+   within it: search and pagination once the player list outgrows a screen, ending other
+   sessions when a password changes (`SessionRegistry`), a second administrator account, and
+   a real audit table instead of log lines.
 
 ## Local run
 
