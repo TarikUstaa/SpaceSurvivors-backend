@@ -84,8 +84,43 @@ h1 { font-size: 1.35rem; margin: 0 0 0.35rem; letter-spacing: -0.01em; }
 /* ── table ───────────────────────────────────────────────────────── */
 .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; }
 
+/*
+ * A scrolling box paints a scrollbar, and the browser's default track is white in every
+ * theme — which inside a dark card is a bright bar across the bottom of it. The audit table
+ * is six columns wide and was simply the first one to overflow and show this; any table can,
+ * on a narrow enough window, so the fix belongs here and not on one page.
+ *
+ * Both spellings: scrollbar-color is the standard one, ::-webkit-scrollbar is what older
+ * WebKit understands. Declaring the webkit pseudo-elements takes over the whole scrollbar,
+ * so the track has to be given its transparency explicitly.
+ */
+.table-wrap {
+    scrollbar-width: thin;
+    scrollbar-color: var(--rule) transparent;
+}
+.table-wrap::-webkit-scrollbar { height: 9px; }
+.table-wrap::-webkit-scrollbar-track { background: transparent; }
+.table-wrap::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 999px; }
+.table-wrap::-webkit-scrollbar-thumb:hover { background: var(--ink-soft); }
+
 table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 th, td { padding: 0.6rem 0.85rem; text-align: left; white-space: nowrap; }
+
+/*
+ * nowrap is right for the short cells that make up most of a row — a wrapped timestamp or
+ * score reads as two values. It is wrong for the two kinds of cell the audit table added:
+ * a sentence, and a uuid. Left as nowrap they are what pushed the table past its container
+ * in the first place, so this is the cause and the rules above are the safety net.
+ */
+td.text { white-space: normal; min-width: 15rem; }
+
+/*
+ * A uuid stays on one line and is cut with an ellipsis rather than wrapped. Wrapped, it turns
+ * one row four rows tall and the column it sits in is the least interesting on the page.
+ * Nothing is lost: the cell still holds the whole value, so selecting and copying gives the
+ * full id, and the title attribute shows it on hover.
+ */
+td.id { max-width: 13rem; overflow: hidden; text-overflow: ellipsis; }
 th {
     font-size: 0.72rem;
     text-transform: uppercase;

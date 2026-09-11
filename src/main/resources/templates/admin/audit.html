@@ -41,8 +41,9 @@
                     <span class="pill" th:classappend="${e.action.name()}"
                           th:text="${e.label()}">signed in</span>
                 </td>
-                <td th:text="${e.summary}">did something</td>
-                <td class="mono muted small" th:text="${e.target} ?: '—'">—</td>
+                <td class="text" th:text="${e.summary}">did something</td>
+                <td class="mono muted small id" th:title="${e.target}"
+                    th:text="${e.target} ?: '—'">—</td>
                 <td class="mono muted small" th:text="${e.actorIp} ?: '—'">—</td>
             </tr>
             </tbody>
