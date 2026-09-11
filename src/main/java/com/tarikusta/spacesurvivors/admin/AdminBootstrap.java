@@ -37,26 +37,34 @@ public class AdminBootstrap implements ApplicationRunner {
     private static final int MIN_USERNAME = 3;
     private static final int MAX_USERNAME = 32;
 
-    /**
-     * Short enough to type, long enough to be worth typing. Twelve characters is the point
-     * where an offline attack on a BCrypt hash stops being a weekend project; the database
-     * has no opinion about it, so the check lives here.
-     */
-    private static final int MIN_PASSWORD = 12;
-
     private final AdminUserRepository admins;
     private final PasswordEncoder passwordEncoder;
     private final String username;
     private final String password;
+    private final int minPassword;
 
+    /**
+     * @param minPassword the shortest password this will accept. Twelve by default, which is
+     *                    roughly where an offline attack on a BCrypt hash stops being a
+     *                    weekend project — the database has no opinion about length, so the
+     *                    rule lives here.
+     *
+     *                    <p>It is a setting rather than a constant only so that a developer
+     *                    can type something short on their own machine. Lowering it anywhere
+     *                    the internet can reach gives up the protection entirely, which is
+     *                    why the default is the safe value and the override lives in a
+     *                    git-ignored local file.</p>
+     */
     public AdminBootstrap(AdminUserRepository admins,
                           PasswordEncoder passwordEncoder,
                           @Value("${app.admin.bootstrap.username:}") String username,
-                          @Value("${app.admin.bootstrap.password:}") String password) {
+                          @Value("${app.admin.bootstrap.password:}") String password,
+                          @Value("${app.admin.bootstrap.min-password-length:12}") int minPassword) {
         this.admins = admins;
         this.passwordEncoder = passwordEncoder;
         this.username = username == null ? "" : username.trim();
         this.password = password == null ? "" : password;
+        this.minPassword = minPassword;
     }
 
     @Override
@@ -81,9 +89,9 @@ public class AdminBootstrap implements ApplicationRunner {
             return;
         }
 
-        if (password.length() < MIN_PASSWORD) {
+        if (password.length() < minPassword) {
             log.error("Administrator not created: password must be at least {} characters.",
-                    MIN_PASSWORD);
+                    minPassword);
             return;
         }
 

@@ -32,9 +32,12 @@ class AdminBootstrapTest {
     private final AdminUserRepository admins = mock(AdminUserRepository.class);
     private final PasswordEncoder encoder = new BCryptPasswordEncoder();
 
+    /** The production minimum, so the tests below assert the rule as deployments meet it. */
+    private static final int MIN_PASSWORD = 12;
+
     private void run(String username, String password, long existingAdmins) {
         when(admins.count()).thenReturn(existingAdmins);
-        new AdminBootstrap(admins, encoder, username, password)
+        new AdminBootstrap(admins, encoder, username, password, MIN_PASSWORD)
                 .run(new DefaultApplicationArguments());
     }
 
@@ -80,6 +83,22 @@ class AdminBootstrapTest {
     void refusesAShortPassword() {
         run(USERNAME, "short", 0);
         verify(admins, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("a lowered minimum lets a short password through, and only then")
+    void honoursALoweredMinimum() {
+        // The local-development escape hatch. Worth a test because it is the one setting
+        // that makes the service less safe, so its effect should be exactly what it says:
+        // the same password that was refused above is accepted when the floor is moved, and
+        // nothing else about the account changes.
+        when(admins.count()).thenReturn(0L);
+        new AdminBootstrap(admins, encoder, USERNAME, "short", 5)
+                .run(new DefaultApplicationArguments());
+
+        ArgumentCaptor<AdminUser> saved = ArgumentCaptor.forClass(AdminUser.class);
+        verify(admins).save(saved.capture());
+        assertThat(encoder.matches("short", saved.getValue().getPasswordHash())).isTrue();
     }
 
     @Test
