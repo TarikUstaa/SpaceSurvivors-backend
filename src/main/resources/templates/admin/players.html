@@ -8,21 +8,7 @@
 </head>
 <body>
 
-<header class="topbar">
-    <span class="brand">SpaceSurvivors</span>
-    <nav>
-        <a th:href="@{/admin/players}" class="active">Players</a>
-    </nav>
-    <span class="who" th:text="${admin}">admin</span>
-    <!--
-      Logout is a POST because it changes state, and a GET logout is a link any other site
-      can embed to sign an administrator out. The form carries the CSRF token like every
-      other POST here.
-    -->
-    <form th:action="@{/admin/logout}" method="post">
-        <button type="submit" class="linkbutton">Sign out</button>
-    </form>
-</header>
+<header th:replace="~{admin/fragments :: topbar('players', ${admin})}"></header>
 
 <main>
     <h1>Players</h1>

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<!--
+  Shared pieces. This file is never served on its own; the fragments below are pulled into
+  the real pages with th:replace.
+
+  It exists from the second page onwards, not the first — one page has nothing to share, and
+  a layout built for a single screen is a guess about what the second one will need.
+-->
+<body>
+
+<!--
+  The bar at the top of every signed-in page. `active` is the name of the current page, so
+  each page says which nav link is its own rather than every page hard-coding the whole bar.
+-->
+<header class="topbar" th:fragment="topbar(active, admin)">
+    <span class="brand">SpaceSurvivors</span>
+    <nav>
+        <a th:href="@{/admin/players}"
+           th:classappend="${active == 'players'} ? 'active'">Players</a>
+        <a th:href="@{/admin/leaderboard}"
+           th:classappend="${active == 'leaderboard'} ? 'active'">Leaderboard</a>
+    </nav>
+    <span class="who" th:text="${admin}">admin</span>
+    <!--
+      Logout is a POST because it changes state, and a GET logout is a link any other site
+      can embed to sign an administrator out. The form carries the CSRF token like every
+      other POST here.
+    -->
+    <form th:action="@{/admin/logout}" method="post">
+        <button type="submit" class="linkbutton">Sign out</button>
+    </form>
+</header>
+
+<!-- Flash messages from the last redirect, if there were any. -->
+<div th:fragment="flash">
+    <p class="notice ok" th:if="${message}" th:text="${message}">Done.</p>
+    <p class="notice warn" th:if="${warning}" th:text="${warning}">Nothing happened.</p>
+</div>
+
+</body>
+</html>

@@ -32,8 +32,15 @@ public class LeaderboardService {
 
     private static final Logger log = LoggerFactory.getLogger(LeaderboardService.class);
 
-    /** The game's two modes. Anything else is a client bug or someone poking the API. */
-    private static final Set<String> MODES = Set.of("infinite", "campaign");
+    /**
+     * The game's two modes. Anything else is a client bug or someone poking the API.
+     *
+     * <p>Public because the backoffice's leaderboard page needs the same list, both to draw
+     * its tabs and to check what it was asked for. A second copy over there would be a copy
+     * that can disagree, and the day a third mode is added the half that does not know about
+     * it just quietly loses a page.</p>
+     */
+    public static final Set<String> MODES = Set.of("infinite", "campaign");
 
     /** Even a perfect build cannot sustain this; well above anything the balance sim produces. */
     private static final double MAX_KILLS_PER_SECOND = 60;

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Leaderboard · SpaceSurvivors backoffice</title>
+    <link rel="stylesheet" th:href="@{/admin/assets/admin.css}">
+</head>
+<body>
+
+<header th:replace="~{admin/fragments :: topbar('leaderboard', ${admin})}"></header>
+
+<main>
+    <h1>Leaderboard</h1>
+    <p class="subtitle">
+        One row per player per mode — their personal best, not every run. Times in UTC.
+    </p>
+
+    <div th:replace="~{admin/fragments :: flash}"></div>
+
+    <div class="tabs">
+        <a th:each="m : ${modes}"
+           th:href="@{/admin/leaderboard(mode=${m})}"
+           th:text="${m}"
+           th:classappend="${m == mode} ? 'active'">mode</a>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+            <tr>
+                <th class="num">#</th>
+                <th>Player</th>
+                <th class="num">Time</th>
+                <th class="num">Kills</th>
+                <th class="num">Level</th>
+                <th class="num">Bosses</th>
+                <th>Achieved</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="row, i : ${rows}">
+                <td class="num muted" th:text="${i.count}">1</td>
+                <td class="name" th:text="${row.displayName}">Name</td>
+                <td class="num" th:text="${row.clock()}">0:00</td>
+                <td class="num" th:text="${row.kills}">0</td>
+                <td class="num" th:text="${row.reachedLevel}">0</td>
+                <td class="num" th:text="${row.bossesDefeated}">0</td>
+                <td class="muted" th:text="${row.achievedOn()}">—</td>
+                <td class="actions">
+                    <!--
+                      A form per row, not a link: removing a score changes something, and a
+                      GET that changes something is a URL a browser may follow on its own.
+
+                      The message travels in a data- attribute rather than in an onsubmit,
+                      because Thymeleaf refuses to put a String into an event handler at all —
+                      it would be building JavaScript out of database content, which is one
+                      unlucky display name away from being an injection. As a data attribute
+                      it is text the whole way, and the script below reads it as text.
+
+                      The confirmation is a courtesy for whoever is clicking. The server does
+                      not rely on it: nothing arriving over the network can be trusted to have
+                      been confirmed, which is why the CSRF token and the session check are
+                      the things actually standing between this row and a stranger.
+                    -->
+                    <form th:action="@{/admin/leaderboard/delete}" method="post" class="confirm"
+                          th:attr="data-confirm=|Remove the ${mode} score of ${row.displayName}?|">
+                        <input type="hidden" name="playerId" th:value="${row.playerId}">
+                        <input type="hidden" name="mode" th:value="${mode}">
+                        <button type="submit" class="danger">Remove</button>
+                    </form>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+        <p class="empty" th:if="${rows.isEmpty()}">No scores in this mode yet.</p>
+    </div>
+</main>
+
+<script>
+    // The only script in the backoffice. It reads the message as text from the attribute and
+    // hands it to confirm(); nothing here builds code out of a value.
+    document.querySelectorAll('form.confirm').forEach(function (form) {
+        form.addEventListener('submit', function (event) {
+            if (!window.confirm(form.dataset.confirm)) {
+                event.preventDefault();
+            }
+        });
+    });
+</script>
+
+</body>
+</html>
