@@ -38,12 +38,12 @@ public class ProgressService {
     /**
      * GET /v1/progress. A player with no save is a 404, not an empty object: the client
      * has to tell "nothing stored yet, upload mine" apart from "stored, and it is empty".
-     *
      */
     @Transactional(readOnly = true)
     public ProgressDtos.ProgressView load(UUID playerId) {
         return progress.findById(playerId)
-                .map(row -> new ProgressDtos.ProgressView(json.readTree(row.getProgressData()), row.getVersion()))
+                .map(row -> new ProgressDtos.ProgressView(
+                        json.readTree(row.getProgressData()), row.getVersion()))
                 .orElseThrow(() -> new NotFoundException("no progress stored yet"));
     }
 

@@ -1,8 +1,9 @@
 package com.tarikusta.spacesurvivors.leaderboard;
 
+import com.tarikusta.spacesurvivors.exception.RuleViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.tarikusta.spacesurvivors.exception.RuleViolationException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -12,7 +13,6 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import org.springframework.data.domain.PageRequest;
 
 /**
  * The rules of the leaderboard. No SQL, no HTTP.
@@ -74,7 +74,6 @@ public class LeaderboardService {
         String mode = normaliseMode(run.mode());
         rejectImplausible(run);
 
-
         // Narrow to float first: survived_seconds is a real column, so this is the value
         // that will actually be stored. Comparing the wider incoming double against a
         // narrowed round-trip would report a new record every time the same run was
@@ -91,7 +90,8 @@ public class LeaderboardService {
         return board.findStanding(playerId, mode)
                 .map(standing -> new LeaderboardDtos.SubmitResult(
                         standing.getSeconds(), isNewRecord, standing.getRank()))
-                .orElseGet(() -> new LeaderboardDtos.SubmitResult(run.survivedSeconds(), isNewRecord, null));
+                .orElseGet(() -> new LeaderboardDtos.SubmitResult(
+                        run.survivedSeconds(), isNewRecord, null));
     }
 
     /**

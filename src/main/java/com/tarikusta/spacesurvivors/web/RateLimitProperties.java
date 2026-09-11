@@ -46,13 +46,16 @@ public record RateLimitProperties(
      */
     public RateLimitProperties {
         if (capacity < 1) {
-            throw new IllegalArgumentException("app.ratelimit.capacity must be at least 1, was " + capacity);
+            throw new IllegalArgumentException(
+                    "app.ratelimit.capacity must be at least 1, was " + capacity);
         }
         if (window == null || window.isZero() || window.isNegative()) {
-            throw new IllegalArgumentException("app.ratelimit.window must be a positive duration, was " + window);
+            throw new IllegalArgumentException(
+                    "app.ratelimit.window must be a positive duration, was " + window);
         }
         if (maxClients < 1) {
-            throw new IllegalArgumentException("app.ratelimit.max-clients must be at least 1, was " + maxClients);
+            throw new IllegalArgumentException(
+                    "app.ratelimit.max-clients must be at least 1, was " + maxClients);
         }
         if (adminCapacity < 1) {
             throw new IllegalArgumentException(

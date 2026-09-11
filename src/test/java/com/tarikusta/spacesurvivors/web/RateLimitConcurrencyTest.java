@@ -55,7 +55,7 @@ class RateLimitConcurrencyTest {
                         startTogether.await();
 
                         MockHttpServletRequest request =
-                                new MockHttpServletRequest("POST", RateLimitFilter.GUARDED_PATH);
+                                new MockHttpServletRequest("POST", RateLimitedEndpoint.DEVICE_TOKEN.path());
                         request.setRemoteAddr("10.0.0.1");           // one caller, many threads
                         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -100,7 +100,7 @@ class RateLimitConcurrencyTest {
                     try {
                         startTogether.await();
                         MockHttpServletRequest request =
-                                new MockHttpServletRequest("POST", RateLimitFilter.GUARDED_PATH);
+                                new MockHttpServletRequest("POST", RateLimitedEndpoint.DEVICE_TOKEN.path());
                         request.setRemoteAddr("10.1." + (caller / 256) + "." + (caller % 256));
                         MockHttpServletResponse response = new MockHttpServletResponse();
 

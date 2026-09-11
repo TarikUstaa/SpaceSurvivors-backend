@@ -96,6 +96,10 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
      */
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     public ProblemDetail concurrentWrite(ObjectOptimisticLockingFailureException e) {
+        // Debug rather than dropped: this is a race working as designed, but it is also the
+        // only trace that it happened, and "how often do two devices write at once" is a
+        // question worth being able to answer.
+        log.debug("optimistic lock lost", e);
         return problem(HttpStatus.CONFLICT, "the record changed while this write was in flight");
     }
 

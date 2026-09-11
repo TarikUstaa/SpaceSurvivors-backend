@@ -38,7 +38,7 @@ import java.time.Instant;
  *   <tr><td>Credential</td><td>signed token on every request</td><td>password, once</td></tr>
  *   <tr><td>State</td><td>none — stateless</td><td>a session cookie</td></tr>
  *   <tr><td>CSRF</td><td>disabled, and safe to</td><td>enabled, and must be</td></tr>
- *   <tr><td>Rejection</td><td>401, for a program to read</td><td>a login page, for a person</td></tr>
+ *   <tr><td>Rejection</td><td>401, for a program</td><td>a login page, for a person</td></tr>
  * </table>
  *
  * <p><b>Why CSRF protection comes back here.</b> The API can switch it off because a token

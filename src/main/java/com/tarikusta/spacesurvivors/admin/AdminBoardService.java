@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -41,9 +42,16 @@ public class AdminBoardService {
      *
      * <p>Checked against {@link LeaderboardService#MODES}, the same set the game's own endpoint
      * validates against, so the two cannot drift into disagreeing about what a mode is.</p>
+     *
+     * <p>{@code Locale.ROOT} is not decoration. {@code toLowerCase()} uses the JVM's default
+     * locale, and in Turkish {@code 'I'} lowercases to the dotless {@code 'ı'} — so on a machine
+     * set to Turkish, {@code "INFINITE"} becomes {@code "ınfınıte"} and matches nothing. The
+     * same code would then behave differently on this laptop and in the container, which is the
+     * worst kind of bug to be handed. {@code LeaderboardService} already got this right; this
+     * copy did not.</p>
      */
     public String normalise(String mode) {
-        String candidate = mode == null ? "" : mode.trim().toLowerCase();
+        String candidate = mode == null ? "" : mode.trim().toLowerCase(Locale.ROOT);
         return LeaderboardService.MODES.contains(candidate) ? candidate : DEFAULT_MODE;
     }
 

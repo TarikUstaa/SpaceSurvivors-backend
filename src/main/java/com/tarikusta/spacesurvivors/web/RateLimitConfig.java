@@ -11,6 +11,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Duration;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.function.BiFunction;
 
 /**
@@ -18,7 +21,9 @@ import java.util.function.BiFunction;
  * runs.
  *
  * <p>Both of those are decisions with teeth, which is why they are here and explained
- * rather than scattered through the filter itself.</p>
+ * rather than scattered through the filter itself. What is <em>not</em> decided here is
+ * which endpoints are guarded or how large their allowances are — that is
+ * {@link RateLimitedEndpoint}, read by this class and by the filter alike.</p>
  */
 @Configuration
 @EnableConfigurationProperties(RateLimitProperties.class)
@@ -42,7 +47,7 @@ public class RateLimitConfig {
     static final int FILTER_ORDER = SecurityFilterProperties.DEFAULT_FILTER_ORDER - 10;
 
     /**
-     * One bucket per caller, in a cache that is bounded in both size and time.
+     * One bucket per caller per guarded endpoint, in a cache bounded in both size and time.
      *
      * <p><b>The bound is not housekeeping, it is the same defence again.</b> A plain map
      * keyed by address grows once per distinct caller and never shrinks, so an attacker
@@ -58,45 +63,44 @@ public class RateLimitConfig {
      * precisely the callers being limited hardest.</p>
      */
     @Bean
-    public FilterRegistrationBean<RateLimitFilter> rateLimitFilterRegistration(RateLimitProperties limits,
-                                                                              ObjectMapper json) {
-        // Greedy refill: tokens trickle back continuously rather than arriving all at once
-        // when the window turns over. An interval refill would let a caller spend a full
-        // bucket at the end of one window and another at the start of the next, which is
-        // twice the intended rate at exactly the moment it matters.
-        Bandwidth deviceTokens = bandwidth(limits.capacity(), limits.window());
-        Bandwidth adminLogins = bandwidth(limits.adminCapacity(), limits.window());
+    public FilterRegistrationBean<RateLimitFilter> rateLimitFilterRegistration(
+            RateLimitProperties limits, ObjectMapper json) {
+
+        Map<RateLimitedEndpoint, Bandwidth> bandwidths = new EnumMap<>(RateLimitedEndpoint.class);
+        for (RateLimitedEndpoint endpoint : RateLimitedEndpoint.values()) {
+            bandwidths.put(endpoint, bandwidth(endpoint.capacity(limits), limits.window()));
+        }
 
         Cache<String, Bucket> buckets = Caffeine.newBuilder()
                 .maximumSize(limits.maxClients())
                 .expireAfterAccess(limits.retention())
                 .build();
 
-        // Keyed by guarded path as well as by caller, so the device endpoint and the
-        // backoffice login hold separate buckets — RateLimitFilter explains why neither
-        // should be able to spend the other's allowance. It is also what lets the two be
-        // sized differently, since the bandwidth is chosen when a key's bucket is first
-        // built.
+        // Keyed by endpoint as well as by caller, so each one holds its own bucket —
+        // RateLimitFilter explains why neither should be able to spend the other's allowance.
+        // It is also what lets them be sized differently, since the bandwidth is chosen when a
+        // key's bucket is first built.
         //
-        // Caffeine's two-argument get is atomic, so concurrent first requests from one
-        // caller share a single bucket instead of each building one and overwriting the
-        // others — which would have handed out a fresh allowance per racing thread.
-        BiFunction<String, String, Bucket> store = (path, caller) -> buckets.get(
-                path + "|" + caller,
-                unused -> Bucket.builder()
-                        .addLimit(RateLimitFilter.GUARDED_ADMIN_PATH.equals(path)
-                                ? adminLogins
-                                : deviceTokens)
-                        .build());
+        // Caffeine's two-argument get is atomic, so concurrent first requests from one caller
+        // share a single bucket instead of each building one and overwriting the others —
+        // which would have handed out a fresh allowance per racing thread.
+        BiFunction<RateLimitedEndpoint, String, Bucket> store = (endpoint, caller) -> buckets.get(
+                endpoint.name() + "|" + caller,
+                unused -> Bucket.builder().addLimit(bandwidths.get(endpoint)).build());
 
-        var registration = new FilterRegistrationBean<>(
-                new RateLimitFilter(store, json, limits.capacity(), limits.adminCapacity()));
+        var registration = new FilterRegistrationBean<>(new RateLimitFilter(store, json, limits));
         registration.setOrder(FILTER_ORDER);
         registration.setEnabled(limits.enabled());
         return registration;
     }
 
-    private static Bandwidth bandwidth(long capacity, java.time.Duration window) {
+    /**
+     * Greedy refill: tokens trickle back continuously rather than arriving all at once when
+     * the window turns over. An interval refill would let a caller spend a full bucket at the
+     * end of one window and another at the start of the next, which is twice the intended rate
+     * at exactly the moment it matters.
+     */
+    private static Bandwidth bandwidth(long capacity, Duration window) {
         return Bandwidth.builder()
                 .capacity(capacity)
                 .refillGreedy(capacity, window)

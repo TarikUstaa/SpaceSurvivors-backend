@@ -1,11 +1,11 @@
 package com.tarikusta.spacesurvivors.player;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import com.tarikusta.spacesurvivors.exception.AlreadyTakenException;
 import com.tarikusta.spacesurvivors.exception.AuthenticationFailedException;
 import com.tarikusta.spacesurvivors.exception.InvalidInputException;
 import com.tarikusta.spacesurvivors.exception.NotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -167,7 +167,10 @@ public class PlayerService {
                 + MAX_NAME_ATTEMPTS + " attempts");
     }
 
-    /** e.g. {@code User104829}. Random rather than sequential so it does not leak the player count. */
+    /**
+     * e.g. {@code User104829}. Random rather than sequential, so the name does not leak how
+     * many players there are.
+     */
     private static String generateName() {
         return "User" + (NAME_MIN_NUMBER + RANDOM.nextInt(NAME_NUMBER_RANGE));
     }

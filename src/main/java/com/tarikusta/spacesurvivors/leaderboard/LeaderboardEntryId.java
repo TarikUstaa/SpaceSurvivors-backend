@@ -30,8 +30,12 @@ public class LeaderboardEntryId implements Serializable {
 
     @Override
     public boolean equals(Object other) {
-        if (this == other) return true;
-        if (!(other instanceof LeaderboardEntryId that)) return false;
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof LeaderboardEntryId that)) {
+            return false;
+        }
         return Objects.equals(playerId, that.playerId) && Objects.equals(mode, that.mode);
     }
 

@@ -3,6 +3,7 @@ package com.tarikusta.spacesurvivors.admin;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -44,9 +45,11 @@ public record AdminPlayerRow(
      * happens to run. The page says so next to the numbers.</p>
      */
     private static final DateTimeFormatter DAY =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(ZoneOffset.UTC);
+            DateTimeFormatter.ofPattern("yyyy-MM-dd")
+                    .withZone(ZoneOffset.UTC).withLocale(Locale.ROOT);
     private static final DateTimeFormatter MINUTE =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneOffset.UTC);
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                    .withZone(ZoneOffset.UTC).withLocale(Locale.ROOT);
 
     public String firstSeen() {
         return firstLoginDate == null ? "—" : DAY.format(firstLoginDate);

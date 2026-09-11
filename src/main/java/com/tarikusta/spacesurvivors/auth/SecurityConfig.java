@@ -8,6 +8,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -60,32 +61,35 @@ public class SecurityConfig {
     };
 
     /**
+     * Last, and it has to be: this chain declares no {@code securityMatcher}, so it accepts
+     * every request that reached it. Spring Security asks each chain in order and stops at
+     * the first that accepts, so a chain with no matcher placed earlier would answer for
+     * {@code /admin/**} too and the backoffice would never see its own rules. See
+     * {@link com.tarikusta.spacesurvivors.admin.AdminSecurityConfig}, which claims that path
+     * at order 1.
+     *
      * @param docsEnabled mirrors {@code springdoc.api-docs.enabled}, so the allow-list cannot
      *                    drift from what is actually being served. Tying the two together is
      *                    the point: re-enabling the docs without remembering this file would
      *                    otherwise leave them served but refused, and — far worse the other
      *                    way round — a permitAll here would quietly publish them again.
      */
-    /**
-     * Last, and it has to be: this chain declares no {@code securityMatcher}, so it accepts
-     * every request that reached it. Spring Security asks each chain in order and stops at
-     * the first that accepts, so a chain with no matcher placed earlier would answer for
-     * {@code /admin/**} too and the backoffice would never see its own rules. See
-     * {@code admin/AdminSecurityConfig}, which claims that path at order 1.
-     */
     @Bean
     @Order(2)
-    public SecurityFilterChain api(HttpSecurity http,
-                                   @Value("${springdoc.api-docs.enabled:true}") boolean docsEnabled)
-            throws Exception {
+    public SecurityFilterChain api(
+            HttpSecurity http,
+            @Value("${springdoc.api-docs.enabled:true}") boolean docsEnabled) throws Exception {
+
         return http
                 // No browser, no cookies, no sessions: every request carries its own token,
                 // so there is nothing for a forged cross-site request to ride on.
-                .csrf(csrf -> csrf.disable())
+                .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers(PUBLIC).permitAll();
-                    if (docsEnabled) auth.requestMatchers(DOCS).permitAll();
+                    if (docsEnabled) {
+                        auth.requestMatchers(DOCS).permitAll();
+                    }
                     auth.anyRequest().authenticated();
                 })
                 .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()))

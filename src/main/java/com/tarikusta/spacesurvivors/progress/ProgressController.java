@@ -47,7 +47,8 @@ public class ProgressController {
             case ProgressService.SaveOutcome.Accepted accepted ->
                     ResponseEntity.ok(ProgressDtos.SaveAccepted.of(accepted));
             case ProgressService.SaveOutcome.Conflict conflict ->
-                    ResponseEntity.status(HttpStatus.CONFLICT).body(ProgressDtos.SaveConflict.of(conflict));
+                    ResponseEntity.status(HttpStatus.CONFLICT)
+                            .body(ProgressDtos.SaveConflict.of(conflict));
         };
     }
 }

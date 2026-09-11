@@ -63,7 +63,9 @@ public class LeaderboardEntry {
         if (!(other instanceof LeaderboardEntry that)) {
             return false;
         }
-        return playerId != null && Objects.equals(playerId, that.playerId) && Objects.equals(mode, that.mode);
+        return playerId != null
+                && Objects.equals(playerId, that.playerId)
+                && Objects.equals(mode, that.mode);
     }
 
     @Override

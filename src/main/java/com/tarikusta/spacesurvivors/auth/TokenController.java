@@ -28,9 +28,11 @@ public class TokenController {
      * 200 with a token, or 401 when the credential is not recognised. An unknown device is
      * registered rather than refused — the game has no sign-up screen.
      *
-     * <p>{@link HttpServletRequest} appears here and nowhere else in the application: the
-     * caller's address is recorded at authentication, so this is the only point that needs
-     * it, and the service layer stays free of servlet types.</p>
+     * <p>{@link HttpServletRequest} is taken here and turned into a plain {@code String}
+     * immediately, so {@link TokenService} and everything below it stays free of servlet
+     * types. The backoffice does the same at its own edge, for the audit trail: the rule is
+     * not that only one class may see a request, it is that a request never travels past the
+     * web layer.</p>
      */
     @PostMapping("/token")
     public AuthDtos.TokenResponse token(@Valid @RequestBody AuthDtos.TokenRequest body,

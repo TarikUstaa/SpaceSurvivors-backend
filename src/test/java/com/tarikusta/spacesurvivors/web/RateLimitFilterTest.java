@@ -46,7 +46,7 @@ class RateLimitFilterTest {
 
     /** One POST to the guarded path from the given address. */
     private static MockHttpServletResponse post(RateLimitFilter filter, String address) throws Exception {
-        return send(filter, "POST", RateLimitFilter.GUARDED_PATH, address);
+        return send(filter, "POST", RateLimitedEndpoint.DEVICE_TOKEN.path(), address);
     }
 
     private static MockHttpServletResponse send(RateLimitFilter filter, String method, String path, String address)
@@ -148,7 +148,7 @@ class RateLimitFilterTest {
             RateLimitFilter filter = filterAllowing(1);
             post(filter, "10.0.0.1");
 
-            MockHttpServletRequest request = new MockHttpServletRequest("POST", RateLimitFilter.GUARDED_PATH);
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", RateLimitedEndpoint.DEVICE_TOKEN.path());
             request.setRemoteAddr("10.0.0.1");
             MockFilterChain chain = new MockFilterChain();
             filter.doFilter(request, new MockHttpServletResponse(), chain);
@@ -208,7 +208,7 @@ class RateLimitFilterTest {
             RateLimitFilter filter = filterAllowing(1);
             post(filter, "10.0.0.1");
 
-            assertThat(passedThrough(send(filter, "GET", RateLimitFilter.GUARDED_PATH, "10.0.0.1"))).isTrue();
+            assertThat(passedThrough(send(filter, "GET", RateLimitedEndpoint.DEVICE_TOKEN.path(), "10.0.0.1"))).isTrue();
         }
     }
 
@@ -281,7 +281,7 @@ class RateLimitFilterTest {
         }
 
         private MockHttpServletResponse login(RateLimitFilter filter, String address) throws Exception {
-            return send(filter, "POST", RateLimitFilter.GUARDED_ADMIN_PATH, address);
+            return send(filter, "POST", RateLimitedEndpoint.ADMIN_LOGIN.path(), address);
         }
 
         @Test
@@ -337,8 +337,8 @@ class RateLimitFilterTest {
 
             // Only the POST costs a BCrypt hash. Counting the GET would mean the page stopped
             // rendering after one look at it.
-            send(filter, "GET", RateLimitFilter.GUARDED_ADMIN_PATH, "10.0.0.4");
-            send(filter, "GET", RateLimitFilter.GUARDED_ADMIN_PATH, "10.0.0.4");
+            send(filter, "GET", RateLimitedEndpoint.ADMIN_LOGIN.path(), "10.0.0.4");
+            send(filter, "GET", RateLimitedEndpoint.ADMIN_LOGIN.path(), "10.0.0.4");
 
             assertThat(login(filter, "10.0.0.4").getStatus()).isEqualTo(200);
         }

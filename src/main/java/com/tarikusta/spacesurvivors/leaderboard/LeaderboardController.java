@@ -12,20 +12,23 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 /**
- * HTTP layer for the leaderboard. As with the progress endpoints, the {@link Caller} is
- * put on the request by the auth filter and read here with {@code @RequestAttribute}.
+ * HTTP for the leaderboard. Every method delegates; no rules live here.
+ *
+ * <p>{@code @CurrentPlayer} is filled from the verified token's subject claim, so the caller's
+ * identity is never something the request body can claim — see
+ * {@link com.tarikusta.spacesurvivors.auth.CurrentPlayerArgumentResolver}.</p>
  *
  * <p>{@code @Valid} is what makes Spring run the constraints declared on
- * {@link LeaderboardDtos.Submission} before this method body executes.
+ * {@link LeaderboardDtos.Submission} before a method body here executes.</p>
  */
 @RestController
 @RequestMapping("/v1/leaderboard")
 public class LeaderboardController {
 
-    private final LeaderboardService service;
+    private final LeaderboardService leaderboard;
 
-    public LeaderboardController(LeaderboardService service) {
-        this.service = service;
+    public LeaderboardController(LeaderboardService leaderboard) {
+        this.leaderboard = leaderboard;
     }
 
     /**
@@ -38,18 +41,18 @@ public class LeaderboardController {
      */
     @PostMapping
     public LeaderboardDtos.SubmitResult submit(@CurrentPlayer UUID playerId,
-                                         @Valid @RequestBody LeaderboardDtos.Submission run) {
-        return service.submit(playerId, run);
+                                               @Valid @RequestBody LeaderboardDtos.Submission run) {
+        return leaderboard.submit(playerId, run);
     }
 
     /**
-     * GET /v1/leaderboard?mode=infinite&amp;limit=100 — the public board plus the playerId's
-     * own standing. {@code limit} is optional and clamped server-side.
+     * GET /v1/leaderboard?mode=infinite&amp;limit=100 — the public board plus the caller's own
+     * standing. {@code limit} is optional and clamped server-side.
      */
     @GetMapping
     public LeaderboardDtos.Board board(@CurrentPlayer UUID playerId,
-                                 @RequestParam String mode,
-                                 @RequestParam(defaultValue = "100") int limit) {
-        return service.board(playerId, mode, limit);
+                                       @RequestParam String mode,
+                                       @RequestParam(defaultValue = "100") int limit) {
+        return leaderboard.board(playerId, mode, limit);
     }
 }

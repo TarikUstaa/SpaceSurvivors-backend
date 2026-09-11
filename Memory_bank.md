@@ -817,6 +817,54 @@ integration tests needed **no changes at all** — which is the evidence that th
 survived the move. `AdminAccountServiceTest` gained two assertions the refactor made possible:
 a successful change records an audit entry, a refused one records nothing.
 
+### D30 — a clean-code pass over the whole backend (2026-09-11)
+
+Tarik asked for the entire service read back as a Java reviewer would read it. ~4,500 lines of
+main source, every file. Behaviour unchanged and **175 tests green before and after** — that
+was the constraint, and the unchanged test suite is the evidence.
+
+**Two real bugs, both the same one.** `toLowerCase()` and `"…".formatted(…)` use the JVM's
+*default* locale. In Turkish, `'I'` lowercases to the dotless `'ı'`:
+
+- `AdminBoardService.normalise` — `"INFINITE"` becomes `"ınfınıte"` and matches no mode.
+- `AdminAuditEntry.label()` — the audit page reads **"sıgned ın"** on a machine set to Turkish
+  and "signed in" in the container. Same code, different output, and Tarik develops in Turkey.
+
+`LeaderboardService` already used `Locale.ROOT`; the copies did not. Every case conversion,
+every `DateTimeFormatter` (4 of them) and the one `String.format` are now pinned to
+`Locale.ROOT`. **The rule: if a string is an identifier and not somebody's prose, say which
+locale.**
+
+**One structural change — `RateLimitedEndpoint`.** D26's lesson was "guard the property, not
+the path", and the fix at the time only half-took. What was left said the same thing twice:
+two path constants and two capacity fields in `RateLimitFilter`, plus a ternary on one of those
+paths in `RateLimitConfig` picking a bandwidth. Adding a third guarded endpoint meant three
+edits in two files with nothing to fail if one was missed. It is now one enum — path, audience
+(`API` → ProblemDetail, `BROWSER` → redirect), and *which property sizes it* — read by both the
+filter and the configuration. Adding an endpoint is one line. `RateLimitFilter` lost its
+`admin` boolean, its duplicate refusal method and 40 lines.
+
+**Comments that had become lies** — worse than no comment, because they are trusted:
+
+- `LeaderboardController` still described `{@link Caller}` and `@RequestAttribute`, both gone
+  since D19; the link would not even resolve.
+- `TokenController` claimed `HttpServletRequest` "appears here and nowhere else" — four admin
+  classes take one now.
+- `PlayerController.me` said it creates the profile on first contact; that moved to
+  `/v1/auth/token`.
+- `SecurityConfig.api` carried **two stacked javadoc blocks**, so the one documenting
+  `docsEnabled` was attached to nothing.
+
+**Two silences given a voice.** `HealthService` swallowed every database failure with no log at
+all — the one moment worth investigating left nothing behind. `ApiExceptionHandler` took an
+`ObjectOptimisticLockingFailureException` and never looked at it. Both now log at the level
+that matches.
+
+**The rest is consistency**, each cheap and each the kind of thing that makes a reader wonder
+what else is uneven: tabs in `SpacesurvivorsApplication` (the Initializr default nobody fixed),
+imports out of order in two services, `if` without braces in three places, an unused import, a
+field called `service`, double blank lines, and 15 lines past 100 columns.
+
 ## Open / next
 
 *Priority order.*

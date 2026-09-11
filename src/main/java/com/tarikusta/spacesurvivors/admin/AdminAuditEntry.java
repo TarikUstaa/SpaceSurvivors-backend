@@ -12,6 +12,7 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 
 /**
  * One line of the audit trail.
@@ -113,14 +114,22 @@ public class AdminAuditEntry {
      * compiled and deployed perfectly well. UTC because that is what the column holds.
      */
     private static final DateTimeFormatter SECOND =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneOffset.UTC);
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                    .withZone(ZoneOffset.UTC).withLocale(Locale.ROOT);
 
     public String when() {
         return happenedAt == null ? "—" : SECOND.format(happenedAt);
     }
 
-    /** The action as it appears on the page: {@code PLAYER_DELETED} reads as "player deleted". */
+    /**
+     * The action as it appears on the page: {@code PLAYER_DELETED} reads as "player deleted".
+     *
+     * <p>{@code Locale.ROOT} because this lowercases an identifier, not somebody's prose.
+     * {@code toLowerCase()} would use the JVM's default locale, and in Turkish {@code 'I'}
+     * lowercases to the dotless {@code 'ı'} — the audit page would read "sıgned ın" on a
+     * machine set to Turkish and "signed in" in the container, from the same code.</p>
+     */
     public String label() {
-        return action == null ? "" : action.name().toLowerCase().replace('_', ' ');
+        return action == null ? "" : action.name().toLowerCase(Locale.ROOT).replace('_', ' ');
     }
 }

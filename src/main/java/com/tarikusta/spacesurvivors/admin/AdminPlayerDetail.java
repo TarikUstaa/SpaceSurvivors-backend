@@ -3,6 +3,7 @@ package com.tarikusta.spacesurvivors.admin;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -33,7 +34,8 @@ public record AdminPlayerDetail(
         String saveJson) {
 
     private static final DateTimeFormatter MINUTE =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneOffset.UTC);
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                    .withZone(ZoneOffset.UTC).withLocale(Locale.ROOT);
 
     public boolean hasSave() {
         return saveJson != null;

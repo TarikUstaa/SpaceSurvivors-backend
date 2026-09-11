@@ -3,6 +3,7 @@ package com.tarikusta.spacesurvivors.admin;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -29,12 +30,19 @@ public record AdminBoardRow(
         Instant achievedAt) {
 
     private static final DateTimeFormatter MINUTE =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneOffset.UTC);
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                    .withZone(ZoneOffset.UTC).withLocale(Locale.ROOT);
 
-    /** {@code 15:45}, the way the game shows it — seconds are how it is stored, not how it reads. */
+    /**
+     * {@code 15:45} — how the game shows a time, rather than how the column stores it.
+     *
+     * <p>{@code String.format} with an explicit {@code Locale.ROOT} rather than
+     * {@code "…".formatted(…)}, which uses the JVM default: a locale whose numbering system
+     * is not Western Arabic would render these digits in its own script.</p>
+     */
     public String clock() {
         int total = (int) Math.round(survivedSeconds);
-        return "%d:%02d".formatted(total / 60, total % 60);
+        return String.format(Locale.ROOT, "%d:%02d", total / 60, total % 60);
     }
 
     /** Formatted here rather than in the template: an Instant has no calendar of its own. */

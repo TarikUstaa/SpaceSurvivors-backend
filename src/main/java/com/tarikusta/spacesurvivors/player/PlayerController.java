@@ -21,7 +21,13 @@ public class PlayerController {
         this.players = players;
     }
 
-    /** GET /v1/player — who am I? Creates the profile on first contact. */
+    /**
+     * GET /v1/player — who am I?
+     *
+     * <p>A pure read. The profile already exists by the time this is reachable: a device is
+     * turned into a player at {@code POST /v1/auth/token}, and a request without a token from
+     * there never reaches a controller at all.</p>
+     */
     @GetMapping
     public PlayerDtos.PlayerView me(@CurrentPlayer UUID playerId) {
         return PlayerDtos.PlayerView.of(players.view(playerId));

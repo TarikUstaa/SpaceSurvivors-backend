@@ -90,7 +90,8 @@ public class AdminAudit {
 
     @Transactional(readOnly = true)
     public Trail recent() {
-        List<AdminAuditEntry> page = store.findAllByOrderByHappenedAtDescAuditIdDesc(Limit.of(RECENT));
+        List<AdminAuditEntry> page =
+                store.findAllByOrderByHappenedAtDescAuditIdDesc(Limit.of(RECENT));
         return new Trail(page, store.count(), RECENT);
     }
 

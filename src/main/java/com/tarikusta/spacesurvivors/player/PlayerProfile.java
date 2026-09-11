@@ -82,7 +82,6 @@ public class PlayerProfile {
         this.lastIp = lastIp;
     }
 
-
     /**
      * Identity is the primary key, and nothing else.
      *
