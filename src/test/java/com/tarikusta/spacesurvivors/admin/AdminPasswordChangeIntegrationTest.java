@@ -117,7 +117,9 @@ class AdminPasswordChangeIntegrationTest {
                         .param("newPassword", REPLACEMENT)
                         .param("confirmPassword", REPLACEMENT)
                         .with(user(ADMIN).roles("ADMIN")))
-                .andExpect(status().isForbidden());
+                // A redirect, not a 403: a stale token is something the person can fix by
+                // signing in again. See AdminSecurityConfig.StaleFormHandler.
+                .andExpect(redirectedUrl("/admin/login?expired"));
 
         mvc.perform(formLogin("/admin/login").user(ADMIN).password(CURRENT))
                 .andExpect(authenticated());

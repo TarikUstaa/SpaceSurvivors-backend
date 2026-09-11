@@ -198,9 +198,13 @@ class AdminSecurityIntegrationTest {
         // formLogin() above attaches one for us, which is convenient and hides this. Posting
         // by hand is the only way to see that the protection is actually switched on — and
         // it is the protection that stops another site from signing an administrator out, or
-        // worse, once this section grows buttons that change things.
+        // worse, now that this section has buttons that change things.
+        //
+        // The refusal is a redirect rather than a 403 because a stale token is something a
+        // person can fix; StaleFormHandler explains why, and why only CSRF failures are
+        // treated this way.
         mvc.perform(post("/admin/logout").with(user(ADMIN).roles("ADMIN")))
-                .andExpect(status().isForbidden());
+                .andExpect(redirectedUrl("/admin/login?expired"));
 
         mvc.perform(post("/admin/logout").with(user(ADMIN).roles("ADMIN")).with(csrf()))
                 .andExpect(status().is3xxRedirection());

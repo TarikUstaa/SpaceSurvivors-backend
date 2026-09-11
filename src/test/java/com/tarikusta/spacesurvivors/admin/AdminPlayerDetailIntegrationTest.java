@@ -172,7 +172,7 @@ class AdminPlayerDetailIntegrationTest {
         mvc.perform(post("/admin/players/" + player + "/delete")
                         .param("confirmName", name)
                         .with(user(ADMIN).roles("ADMIN")))
-                .andExpect(status().isForbidden());
+                .andExpect(redirectedUrl("/admin/login?expired"));
 
         assertThat(countIn("player_profile")).isEqualTo(1);
     }

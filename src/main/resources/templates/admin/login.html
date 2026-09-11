@@ -26,6 +26,10 @@
         <p class="notice warn" th:if="${param.throttled}">
             Too many sign-in attempts. Wait a minute and try again.
         </p>
+        <!-- The page had been sitting open long enough for its token to expire. -->
+        <p class="notice info" th:if="${param.expired}">
+            That form had gone stale. Sign in and try again.
+        </p>
 
         <!--
           th:action, not a plain action: it is what makes Thymeleaf add the hidden CSRF token

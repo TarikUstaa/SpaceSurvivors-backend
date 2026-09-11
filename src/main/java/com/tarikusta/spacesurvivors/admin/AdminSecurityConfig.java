@@ -8,10 +8,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.access.AccessDeniedHandlerImpl;
 import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
+import org.springframework.security.web.csrf.CsrfException;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -76,6 +80,9 @@ public class AdminSecurityConfig {
                         .logoutUrl("/admin/logout")
                         .logoutSuccessUrl("/admin/login?logout")
                         .deleteCookies("JSESSIONID"))
+                // What a stale CSRF token looks like to the person who hit it. See
+                // StaleFormHandler — without this it is a bare 401 from a different chain.
+                .exceptionHandling(e -> e.accessDeniedHandler(new StaleFormHandler()))
                 // Sessions are wanted here, but the id must change the moment the person
                 // signs in: otherwise a session id an attacker planted before the login is
                 // still valid after it, and it is now an authenticated one.
@@ -96,6 +103,45 @@ public class AdminSecurityConfig {
     @Bean
     public AdminLoginRecorder adminLoginRecorder(AdminUserRepository admins) {
         return new AdminLoginRecorder(admins);
+    }
+
+    /**
+     * Answers a rejected form in a way the person in front of it can act on.
+     *
+     * <p><b>The problem.</b> {@code CsrfFilter} sits <em>ahead</em> of
+     * {@code ExceptionTranslationFilter} in the chain, so the exception it throws is never
+     * translated: it leaves the security chain entirely, the container dispatches to
+     * {@code /error}, and {@code /error} is not {@code /admin/**} — so the API chain answers
+     * it, with a 401 and no explanation. An administrator whose login page had been open long
+     * enough for its token to expire pressed a button and got a blank page with the wrong
+     * status on it.</p>
+     *
+     * <p>Setting an access-denied handler here fixes it because {@code CsrfConfigurer} picks
+     * up whatever handler {@code exceptionHandling} registered and gives it to the filter.
+     * A stale token then means what it actually means — sign in again — and the request is
+     * still refused, which was never in question.</p>
+     *
+     * <p><b>Only CSRF failures are redirected.</b> Everything else keeps the default 403: a
+     * signed-in person without the ADMIN role has not gone stale, they are simply not allowed,
+     * and sending them to a login page would invite them to try the same credentials again.</p>
+     *
+     * <p>Worth knowing that MockMvc does not perform the error dispatch, so in tests the
+     * original behaviour appeared as a clean 403 and only the deployed service showed the 401.
+     * The test for this asserts the redirect, which both environments agree on.</p>
+     */
+    static class StaleFormHandler implements AccessDeniedHandler {
+
+        private final AccessDeniedHandler forbidden = new AccessDeniedHandlerImpl();
+
+        @Override
+        public void handle(HttpServletRequest request, HttpServletResponse response,
+                           AccessDeniedException denied) throws IOException, ServletException {
+            if (denied instanceof CsrfException) {
+                response.sendRedirect(request.getContextPath() + "/admin/login?expired");
+                return;
+            }
+            forbidden.handle(request, response, denied);
+        }
     }
 
     static class AdminLoginRecorder extends SavedRequestAwareAuthenticationSuccessHandler {

@@ -190,7 +190,7 @@ class AdminLeaderboardIntegrationTest {
                         .param("playerId", player.toString())
                         .param("mode", "infinite")
                         .with(user(ADMIN).roles("ADMIN")))
-                .andExpect(status().isForbidden());
+                .andExpect(redirectedUrl("/admin/login?expired"));
 
         assertThat(scoresFor(player)).isEqualTo(2);
     }
