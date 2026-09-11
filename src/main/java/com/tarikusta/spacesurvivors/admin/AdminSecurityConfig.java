@@ -11,10 +11,12 @@ import org.springframework.core.annotation.Order;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.access.AccessDeniedHandlerImpl;
 import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
+import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler;
 import org.springframework.security.web.csrf.CsrfException;
 
 import java.io.IOException;
@@ -60,7 +62,8 @@ public class AdminSecurityConfig {
     @Bean
     @Order(1)
     public SecurityFilterChain admin(HttpSecurity http,
-                                     AdminLoginRecorder loginRecorder) throws Exception {
+                                     AdminLoginRecorder loginRecorder,
+                                     AdminLoginFailureRecorder failureRecorder) throws Exception {
         return http
                 .securityMatcher("/admin/**")
                 .authorizeHttpRequests(auth -> auth
@@ -73,8 +76,10 @@ public class AdminSecurityConfig {
                         .loginProcessingUrl("/admin/login")
                         .successHandler(loginRecorder)
                         // One message for every kind of failure. "No such user" and "wrong
-                        // password" are the same sentence on purpose.
-                        .failureUrl("/admin/login?error")
+                        // password" are the same sentence on purpose — the handler redirects
+                        // to /admin/login?error exactly as failureUrl() did, and additionally
+                        // writes the attempt down.
+                        .failureHandler(failureRecorder)
                         .permitAll())
                 .logout(out -> out
                         .logoutUrl("/admin/logout")
@@ -101,8 +106,13 @@ public class AdminSecurityConfig {
      * it claims.</p>
      */
     @Bean
-    public AdminLoginRecorder adminLoginRecorder(AdminUserRepository admins) {
-        return new AdminLoginRecorder(admins);
+    public AdminLoginRecorder adminLoginRecorder(AdminUserRepository admins, AdminAudit audit) {
+        return new AdminLoginRecorder(admins, audit);
+    }
+
+    @Bean
+    public AdminLoginFailureRecorder adminLoginFailureRecorder(AdminAudit audit) {
+        return new AdminLoginFailureRecorder(audit);
     }
 
     /**
@@ -147,9 +157,11 @@ public class AdminSecurityConfig {
     static class AdminLoginRecorder extends SavedRequestAwareAuthenticationSuccessHandler {
 
         private final AdminUserRepository admins;
+        private final AdminAudit audit;
 
-        AdminLoginRecorder(AdminUserRepository admins) {
+        AdminLoginRecorder(AdminUserRepository admins, AdminAudit audit) {
             this.admins = admins;
+            this.audit = audit;
             setDefaultTargetUrl("/admin/players");
         }
 
@@ -167,8 +179,54 @@ public class AdminSecurityConfig {
                         admins.save(admin);
                     });
 
+            // last_login_at holds the most recent sign-in; the audit table holds all of them.
+            // Both, because one answers "is this account still in use" at a glance and the
+            // other answers "when exactly, and from where", and a single column cannot do both.
+            audit.signedIn(authentication.getName(), request);
+
             log.info("admin '{}' signed in", authentication.getName());
             super.onAuthenticationSuccess(request, response, authentication);
+        }
+    }
+
+    /**
+     * Writes down a refused sign-in, then answers it exactly as before.
+     *
+     * <p>The superclass with a default failure URL <em>is</em> what {@code failureUrl(...)}
+     * builds internally, so swapping one for the other changes what is recorded and nothing
+     * about what the browser sees — still one message for every kind of failure.</p>
+     *
+     * <p>The username comes from the request parameter because the exception does not carry
+     * it: {@code BadCredentialsException} deliberately drops the credentials, and for an
+     * unknown account there was never a principal to name. It is untrusted input and is
+     * treated as such — clipped by {@link AdminAudit}, stored, never interpreted.</p>
+     *
+     * <p>Only attempts that reached authentication appear here. {@code RateLimitFilter} turns
+     * away the eleventh POST to this path before any of this runs, so a sustained brute force
+     * shows up as a burst of rows and then silence, rather than as an unbounded table.</p>
+     */
+    static class AdminLoginFailureRecorder extends SimpleUrlAuthenticationFailureHandler {
+
+        private final AdminAudit audit;
+
+        AdminLoginFailureRecorder(AdminAudit audit) {
+            super("/admin/login?error");
+            this.audit = audit;
+        }
+
+        @Override
+        public void onAuthenticationFailure(HttpServletRequest request,
+                                            HttpServletResponse response,
+                                            AuthenticationException failed)
+                throws IOException, ServletException {
+            String attempted = request.getParameter("username");
+
+            audit.signInFailed(attempted, request);
+            // At warn, not info: a handful of these is somebody mistyping, and a stream of
+            // them is the only warning this application gets before an account is guessed.
+            log.warn("admin sign-in refused for '{}'", attempted);
+
+            super.onAuthenticationFailure(request, response, failed);
         }
     }
 }

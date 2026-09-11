@@ -1,7 +1,9 @@
 package com.tarikusta.spacesurvivors.admin;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,9 +24,11 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 public class AdminAccountController {
 
     private final AdminAccountService accounts;
+    private final AdminAudit audit;
 
-    public AdminAccountController(AdminAccountService accounts) {
+    public AdminAccountController(AdminAccountService accounts, AdminAudit audit) {
         this.accounts = accounts;
+        this.audit = audit;
     }
 
     @GetMapping
@@ -41,12 +45,21 @@ public class AdminAccountController {
      * offering to submit it a second time — with a password in it. Redirecting means the page
      * the administrator is looking at afterwards was fetched with a GET and holds nothing.</p>
      */
+    /**
+     * {@code @Transactional} so that the change and its audit entry are one unit.
+     * {@link AdminAccountService#changePassword} has its own {@code @Transactional} and joins
+     * this one rather than opening a second; without the annotation here the password would
+     * already be committed by the time the audit row was attempted, and a failure would leave
+     * a changed credential nobody has a record of.
+     */
     @PostMapping
+    @Transactional
     public String change(@RequestParam(required = false) String currentPassword,
                          @RequestParam(required = false) String newPassword,
                          @RequestParam(required = false) String confirmPassword,
                          RedirectAttributes redirect,
-                         Authentication authentication) {
+                         Authentication authentication,
+                         HttpServletRequest request) {
 
         // Checked here rather than in the service: "you typed it twice differently" is a fact
         // about the form, not about the account. The service never sees the second copy.
@@ -59,8 +72,14 @@ public class AdminAccountController {
                 accounts.changePassword(authentication.getName(), currentPassword, newPassword);
 
         switch (result) {
-            case CHANGED -> redirect.addFlashAttribute("message",
-                    "Password changed. It is the one to use next time you sign in.");
+            case CHANGED -> {
+                // Only this branch is audited. A rejected attempt changed nothing, and the
+                // one that matters — somebody else's session being turned into permanent
+                // ownership of the account — is a CHANGED row with an actor and an address.
+                audit.passwordChanged(authentication.getName(), request);
+                redirect.addFlashAttribute("message",
+                        "Password changed. It is the one to use next time you sign in.");
+            }
             case WRONG_CURRENT_PASSWORD -> redirect.addFlashAttribute("warning",
                     "That is not your current password.");
             case TOO_SHORT -> redirect.addFlashAttribute("warning",

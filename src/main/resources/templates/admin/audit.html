@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Audit · SpaceSurvivors backoffice</title>
+    <link rel="stylesheet" th:href="@{/admin/assets/admin.css}">
+</head>
+<body>
+
+<header th:replace="~{admin/fragments :: topbar('audit', ${admin})}"></header>
+
+<main>
+    <h1>Audit</h1>
+    <p class="subtitle">
+        Everything the backoffice has done, and every attempt to sign in to it. Times in UTC.
+        Nothing on this page can be edited or removed.
+    </p>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+            <tr>
+                <th>When</th>
+                <th>Who</th>
+                <th>What</th>
+                <th>Details</th>
+                <th>Target</th>
+                <th>From</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="e : ${entries}">
+                <td class="muted" th:text="${e.when()}">—</td>
+                <td class="name" th:text="${e.actor}">admin</td>
+                <td>
+                    <!--
+                      The class is derived from the enum name, so a new AdminAction constant
+                      gets the default styling rather than silently rendering an empty tag.
+                    -->
+                    <span class="pill" th:classappend="${e.action.name()}"
+                          th:text="${e.label()}">signed in</span>
+                </td>
+                <td th:text="${e.summary}">did something</td>
+                <td class="mono muted small" th:text="${e.target} ?: '—'">—</td>
+                <td class="mono muted small" th:text="${e.actorIp} ?: '—'">—</td>
+            </tr>
+            </tbody>
+        </table>
+        <p class="empty" th:if="${entries.isEmpty()}">
+            Nothing has happened yet. Signing in writes the first line.
+        </p>
+    </div>
+
+    <p class="muted small" th:if="${total > shown}">
+        Showing the most recent <span th:text="${limit}">200</span> of
+        <span th:text="${total}">0</span> entries.
+    </p>
+</main>
+
+</body>
+</html>

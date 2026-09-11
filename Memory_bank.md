@@ -695,9 +695,9 @@ sent" — true before D19 replaced it with signed tokens, a year out of date sin
 
 ## Backoffice — built and deployed 2026-09-11
 
-Four screens at `/admin`, server-rendered with Thymeleaf in this same JAR: **players** (list),
+Five screens at `/admin`, server-rendered with Thymeleaf in this same JAR: **players** (list),
 **player detail** (account, save, scores, delete), **leaderboard** (per mode, remove a score),
-**password**. Commits `5250a11` … `48a8a90`. 164 tests.
+**password**, **audit** (D28). Commits `5250a11` … `48a8a90`, then V4. 175 tests.
 
 **The shape of it.** A second `SecurityFilterChain` at `@Order(1)` claiming `/admin/**`; the
 API chain took `@Order(2)` and is otherwise untouched. The two halves disagree about every
@@ -739,6 +739,54 @@ CSRF failures; a signed-in non-admin keeps the 403.
 **Worth remembering beyond this bug:** MockMvc does not perform the error dispatch, so in tests
 the broken behaviour looked like a clean 403. Only driving the deployed service showed the 401.
 A whole class of error-handling behaviour is invisible to MockMvc.
+
+### D28 — the audit trail is a table, and it is append-only by having no delete (2026-09-11)
+
+`admin_audit` (V4) + `/admin/audit`. Until now every administrative action announced itself with
+`log.info`/`log.warn`, which on this deployment means a container that scales to zero, logs in
+Log Analytics, and a query language nobody here writes. *Who deleted that player* had an answer
+in principle and none in practice — while the backoffice had already gained the ability to
+permanently delete somebody's save and scores. **An action that cannot be undone should at least
+be one that cannot be denied.**
+
+Five events, a closed set in `AdminAction`: `SIGNED_IN`, `SIGN_IN_FAILED`, `PASSWORD_CHANGED`,
+`PLAYER_DELETED`, `SCORE_REMOVED`. Page views are not on the list; a log that fills with reads
+is one nobody scrolls to the bottom of.
+
+**Four decisions worth keeping:**
+
+1. **`actor` and `target` are `text`, not foreign keys.** The sharpest case decides it: the most
+   important row this table holds is *a player was deleted*. A FK with `ON DELETE CASCADE` would
+   erase that row along with them — the log deleting its own evidence — and one without a cascade
+   would refuse the delete outright. The display name is copied into `summary` at write time,
+   because seconds later there is nowhere left to read it from. A record must outlive what it
+   describes.
+2. **Append-only by absence.** `AdminAuditRepository extends Repository` (the bare marker) and
+   declares exactly `save`, `count` and one finder, so no delete exists to be called anywhere in
+   the application. The entity has no setters either. A test asserts the method list by
+   reflection — the guarantee is one convenient signature away from being lost and nothing else
+   would notice. The stronger version, `REVOKE UPDATE, DELETE ON admin_audit FROM ss_app`, is
+   noted in V4 and deferred: `db-roles.sql` runs before the schema exists on a first setup.
+3. **`@Enumerated(EnumType.STRING)`, never `ORDINAL`** — ordinal stores the constant's position,
+   so reordering the enum silently reinterprets every row already written. History changing
+   because somebody tidied a Java file is not a tradeoff, it is a defect.
+4. **Two different failure policies, on purpose.** The destructive actions audit *inside their
+   own transaction* (`AdminAccountController.change` gained `@Transactional` for exactly this),
+   so if the audit row cannot be written the delete rolls back with it — no destructive action
+   without a record. The sign-in handlers swallow and log instead: they run outside any
+   transaction, the event has already happened, and letting a broken log table lock the
+   administrator out escalates a logging fault into a lockout over the least important rows.
+
+**Half the tests are about what must *not* be recorded** — a delete refused for a mistyped name,
+a removal that touched zero rows, a rejected password change. A log that records attempts as
+though they were events is worse than no log, because it is read as one and it lies.
+
+**What the tests found:** the first run failed with four rows already in the table. Other admin
+test classes are not `@Transactional`, sign in for real, and their entries commit and stay — the
+table behaving exactly as an append-only table should. The fix was a watermark (`max(audit_id)`
+in `@BeforeEach`, then `where audit_id > :since`), which is the `bigserial` key from V4 earning
+its keep: with a uuid key "everything since this point" could not have been expressed without
+emptying somebody else's rows.
 
 ## Open / next
 

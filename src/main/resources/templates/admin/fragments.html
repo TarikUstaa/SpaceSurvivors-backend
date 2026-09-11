@@ -20,6 +20,8 @@
            th:classappend="${active == 'players'} ? 'active'">Players</a>
         <a th:href="@{/admin/leaderboard}"
            th:classappend="${active == 'leaderboard'} ? 'active'">Leaderboard</a>
+        <a th:href="@{/admin/audit}"
+           th:classappend="${active == 'audit'} ? 'active'">Audit</a>
     </nav>
     <!-- The signed-in name is also the way to the account page; there is only one thing on it. -->
     <a class="who" th:href="@{/admin/password}" th:text="${admin}"

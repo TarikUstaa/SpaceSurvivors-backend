@@ -109,6 +109,25 @@ td.muted, .muted { color: var(--ink-soft); }
 }
 .pill.yes { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
 
+/*
+ * Audit actions. The class names are the AdminAction constants verbatim, so the template can
+ * derive one instead of carrying a mapping — and an action added in Java without a rule here
+ * simply gets the plain .pill, which is the right way for this to fail.
+ *
+ * Only the rows worth catching an eye are coloured. If everything is highlighted, scanning
+ * the page tells you nothing.
+ */
+.pill.PLAYER_DELETED,
+.pill.SIGN_IN_FAILED {
+    background: color-mix(in srgb, var(--bad) 16%, transparent);
+    color: var(--bad);
+}
+.pill.SCORE_REMOVED,
+.pill.PASSWORD_CHANGED {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    color: var(--accent);
+}
+
 .empty { padding: 2.5rem 1rem; text-align: center; color: var(--ink-soft); }
 
 td.actions { text-align: right; }

@@ -18,8 +18,12 @@ import java.util.regex.Pattern;
  * address they liked. When something trustworthy sits in front, Spring's
  * {@code ForwardedHeaderFilter} plus {@code server.forward-headers-strategy=framework} is
  * the supported way to honour it, and {@code getRemoteAddr} keeps working unchanged.</p>
+ *
+ * <p>Public since the backoffice's audit trail needs the same answer, and needs it to have
+ * gone through the same validation. A second implementation in another package is how two
+ * parts of one application end up disagreeing about what a caller's address is.</p>
  */
-final class ClientAddress {
+public final class ClientAddress {
 
     /** Longest possible textual IPv6 address. */
     private static final int MAX_LENGTH = 45;
@@ -30,7 +34,7 @@ final class ClientAddress {
     private ClientAddress() {
     }
 
-    static String of(HttpServletRequest request) {
+    public static String of(HttpServletRequest request) {
         return literalOrNull(request.getRemoteAddr());
     }
 

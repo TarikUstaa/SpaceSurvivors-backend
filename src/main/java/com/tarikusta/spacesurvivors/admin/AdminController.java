@@ -1,6 +1,7 @@
 package com.tarikusta.spacesurvivors.admin;
 
 import com.tarikusta.spacesurvivors.exception.NotFoundException;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
@@ -39,10 +40,13 @@ public class AdminController {
 
     private final AdminPlayerQueries players;
     private final AdminLeaderboardQueries board;
+    private final AdminAudit audit;
 
-    public AdminController(AdminPlayerQueries players, AdminLeaderboardQueries board) {
+    public AdminController(AdminPlayerQueries players, AdminLeaderboardQueries board,
+                           AdminAudit audit) {
         this.players = players;
         this.board = board;
+        this.audit = audit;
     }
 
     /**
@@ -110,20 +114,29 @@ public class AdminController {
     public String deletePlayer(@PathVariable UUID playerId,
                                @RequestParam(required = false) String confirmName,
                                RedirectAttributes redirect,
-                               Authentication authentication) {
+                               Authentication authentication,
+                               HttpServletRequest request) {
         AdminPlayerDetail detail = players.findDetail(playerId)
                 .orElseThrow(() -> new NotFoundException("no such player"));
 
         if (!detail.displayName().equals(confirmName == null ? "" : confirmName.trim())) {
             redirect.addFlashAttribute("warning",
                     "Nothing was deleted — the name did not match.");
+            // No audit entry. A refused delete changed nothing, and a log that records
+            // attempts alongside events is one where "deleted" has to be read twice.
             return "redirect:/admin/players/" + playerId;
         }
 
         players.deletePlayer(playerId);
 
+        // Inside the same transaction as the delete above, which is the point: if this row
+        // cannot be written, the delete goes back with it. The name is captured now because
+        // in a moment there will be nowhere left to read it from.
+        audit.playerDeleted(authentication.getName(), playerId, detail.displayName(), request);
+
         // The save and the scores went with them, by the cascade on those foreign keys. Said
-        // out loud in the log because "deleted a player" undersells what just happened.
+        // out loud in the log because "deleted a player" undersells what just happened. The
+        // log line is for whoever is tailing the container; admin_audit is the record.
         log.warn("admin '{}' deleted player {} ('{}') along with their save and scores",
                 authentication.getName(), playerId, detail.displayName());
 

@@ -1,6 +1,7 @@
 package com.tarikusta.spacesurvivors.admin;
 
 import com.tarikusta.spacesurvivors.leaderboard.LeaderboardService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
@@ -21,7 +22,8 @@ import java.util.UUID;
  * <p>This is the first page here that writes. Everything up to now only read, and the
  * difference is not the SQL — it is that a wrong click now costs somebody their record. Three
  * things follow from that, and all three are visible below: the removal is a POST and not a
- * link, it names exactly one row, and it says in the log who did it.</p>
+ * link, it names exactly one row, and it leaves an {@code admin_audit} entry saying who did
+ * it.</p>
  */
 @Controller
 @RequestMapping("/admin/leaderboard")
@@ -32,9 +34,11 @@ public class AdminLeaderboardController {
     private static final String DEFAULT_MODE = "infinite";
 
     private final AdminLeaderboardQueries board;
+    private final AdminAudit audit;
 
-    public AdminLeaderboardController(AdminLeaderboardQueries board) {
+    public AdminLeaderboardController(AdminLeaderboardQueries board, AdminAudit audit) {
         this.board = board;
+        this.audit = audit;
     }
 
     @GetMapping
@@ -68,18 +72,19 @@ public class AdminLeaderboardController {
     public String delete(@RequestParam UUID playerId,
                          @RequestParam String mode,
                          RedirectAttributes redirect,
-                         Authentication authentication) {
+                         Authentication authentication,
+                         HttpServletRequest request) {
         String selected = normalise(mode);
         int removed = board.deleteEntry(playerId, selected);
 
         if (removed == 0) {
             // Not an error worth a stack trace, but not a success either: somebody else
             // removed it, or the page was stale. Saying "removed" here would be a lie the
-            // administrator has no way to notice.
+            // administrator has no way to notice — and nothing is audited, because nothing
+            // happened. The return value is what decides that, not the request.
             redirect.addFlashAttribute("warning", "That score was already gone.");
         } else {
-            // The audit trail, such as it is. A real one belongs in a table; this at least
-            // means a removal is never something nobody can account for.
+            audit.scoreRemoved(authentication.getName(), playerId, selected, request);
             log.info("admin '{}' removed the {} score of player {}",
                     authentication.getName(), selected, playerId);
             redirect.addFlashAttribute("message", "Score removed.");

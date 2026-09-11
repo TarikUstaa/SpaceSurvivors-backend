@@ -861,6 +861,12 @@ Arayüz, **gerçekten birden fazla implementasyon olduğunda** açılır: Unity 
    Kırılmasaydı ne kaybederdik? (§4'teki 82 ms / 1.1 ms ölçümünü hatırla.)
 9. **Zor:** `@CurrentPlayer` yerine `playerId`'yi `@RequestParam` yapsak ne olurdu?
    Tam olarak hangi saldırı mümkün hâle gelirdi?
+10. **Orta:** `admin_audit.target` kolonuna `player_profile(player_id)`'ye giden bir foreign
+    key koysaydık ne olurdu? İki ihtimali de düşün: `ON DELETE CASCADE` ile ve onsuz.
+    (İpucu: bu tablonun en önemli satırı "bir oyuncu silindi" satırı.)
+11. **Zor:** `AdminAuditEntry.action` alanındaki `EnumType.STRING`'i `ORDINAL` yapsan bugün
+    hiçbir test kırılmaz. Peki `AdminAction` enum'una ortadan bir sabit eklediğin gün
+    veritabanında ne olur?
 
 ---
 
@@ -868,8 +874,9 @@ Arayüz, **gerçekten birden fazla implementasyon olduğunda** açılır: Unity 
 
 - **JPA ilişkileri** (`@OneToMany`, `@ManyToOne`) — bu projede hiç ihtiyaç olmadı, ama
   gerçek bir nesne grafiğinde işin merkezi orası
-- **Spring Security'nin derinliği** — burada tek bir `SecurityFilterChain` ve JWT var;
-  rol/yetki, method security (`@PreAuthorize`), OAuth2 akışları hiç kullanılmadı
+- **Spring Security'nin derinliği** — artık iki `SecurityFilterChain` var (API için JWT,
+  `/admin/**` için form login + session + CSRF) ve tek bir `hasRole("ADMIN")` kuralı;
+  method security (`@PreAuthorize`) ve OAuth2 akışları hâlâ hiç kullanılmadı
 - **Profiller** — `application-local.properties` ve `application-test.properties` zaten
   kullanılıyor, prod'da genişleyecek
 - **Observability** — Actuator açık ama metrik toplanmıyor. Rate limiter'ın "kaç kez
