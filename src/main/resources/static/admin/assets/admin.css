@@ -121,6 +121,63 @@ button.danger {
 }
 button.danger:hover { background: var(--bad-soft); border-color: var(--bad); }
 
+/* ── detail page ─────────────────────────────────────────────────── */
+.crumb { margin: 0 0 0.75rem; font-size: 0.85rem; }
+.crumb a { text-decoration: none; color: var(--ink-soft); }
+.crumb a:hover { color: var(--ink); }
+
+.panel {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 1.1rem 1.25rem;
+    margin-bottom: 1.1rem;
+}
+.panel h2 {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-soft);
+    margin: 0 0 0.85rem;
+}
+.panel .table-wrap { border: none; border-radius: 0; }
+.panel > .muted.small { font-size: 0.84rem; margin: 0.85rem 0 0; }
+
+.facts { display: grid; gap: 0.55rem 2rem; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); margin: 0; }
+.facts > div { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.facts dt { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); }
+.facts dd { margin: 0; font-size: 0.92rem; overflow-wrap: anywhere; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.86rem; }
+
+details { margin-top: 0.9rem; }
+details summary { cursor: pointer; font-size: 0.86rem; color: var(--accent); }
+details pre {
+    margin: 0.6rem 0 0;
+    padding: 0.8rem;
+    background: var(--ground);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    overflow-x: auto;
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.danger-zone { border-color: color-mix(in srgb, var(--bad) 40%, var(--rule)); }
+.danger-zone h2 { color: var(--bad); }
+.danger-zone form { display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.9rem; }
+.field.inline { margin: 0; }
+.field.inline label { font-size: 0.85rem; color: var(--ink); }
+
+button.danger.solid {
+    background: var(--bad);
+    color: #fff;
+    border-color: var(--bad);
+    padding: 0.5rem 0.9rem;
+    font-size: 0.9rem;
+}
+button.danger.solid:hover { filter: brightness(1.1); background: var(--bad); }
+
 /* ── mode tabs ───────────────────────────────────────────────────── */
 .tabs { display: flex; gap: 0.4rem; margin-bottom: 1rem; }
 .tabs a {

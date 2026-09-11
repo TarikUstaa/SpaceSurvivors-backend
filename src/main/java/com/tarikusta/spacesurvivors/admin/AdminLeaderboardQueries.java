@@ -35,7 +35,7 @@ public interface AdminLeaderboardQueries extends Repository<LeaderboardEntry, Le
      */
     @Query("""
             SELECT new com.tarikusta.spacesurvivors.admin.AdminBoardRow(
-                       e.playerId, p.displayName, e.survivedSeconds, e.kills,
+                       e.playerId, p.displayName, e.mode, e.survivedSeconds, e.kills,
                        e.reachedLevel, e.bossesDefeated, e.achievedAt)
               FROM LeaderboardEntry e
               JOIN PlayerProfile p ON p.playerId = e.playerId
@@ -43,6 +43,18 @@ public interface AdminLeaderboardQueries extends Repository<LeaderboardEntry, Le
              ORDER BY e.survivedSeconds DESC, e.achievedAt ASC
             """)
     List<AdminBoardRow> listByMode(@Param("mode") String mode);
+
+    /** This player's rows, at most one per mode — what the player detail page shows. */
+    @Query("""
+            SELECT new com.tarikusta.spacesurvivors.admin.AdminBoardRow(
+                       e.playerId, p.displayName, e.mode, e.survivedSeconds, e.kills,
+                       e.reachedLevel, e.bossesDefeated, e.achievedAt)
+              FROM LeaderboardEntry e
+              JOIN PlayerProfile p ON p.playerId = e.playerId
+             WHERE e.playerId = :playerId
+             ORDER BY e.mode
+            """)
+    List<AdminBoardRow> listByPlayer(@Param("playerId") UUID playerId);
 
     /**
      * Take one score off the board.

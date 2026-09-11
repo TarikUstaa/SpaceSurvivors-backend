@@ -17,6 +17,8 @@
         <span th:text="${savedCount}">0</span> with a cloud save. Newest first, times in UTC.
     </p>
 
+    <div th:replace="~{admin/fragments :: flash}"></div>
+
     <div class="table-wrap">
         <table>
             <thead>
@@ -31,7 +33,9 @@
             </thead>
             <tbody>
             <tr th:each="p : ${players}">
-                <td class="name" th:text="${p.displayName}">Name</td>
+                <td class="name">
+                    <a th:href="@{'/admin/players/' + ${p.playerId}}" th:text="${p.displayName}">Name</a>
+                </td>
                 <td class="muted" th:text="${p.country} ?: '—'">—</td>
                 <td class="muted" th:text="${p.firstSeen()}">—</td>
                 <td class="muted" th:text="${p.lastSeen()}">—</td>

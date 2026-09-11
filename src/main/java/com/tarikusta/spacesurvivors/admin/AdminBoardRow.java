@@ -21,6 +21,7 @@ import java.util.UUID;
 public record AdminBoardRow(
         UUID playerId,
         String displayName,
+        String mode,
         double survivedSeconds,
         int kills,
         int reachedLevel,

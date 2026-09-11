@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="|${player.displayName} · SpaceSurvivors backoffice|">Player</title>
+    <link rel="stylesheet" th:href="@{/admin/assets/admin.css}">
+</head>
+<body>
+
+<header th:replace="~{admin/fragments :: topbar('players', ${admin})}"></header>
+
+<main>
+    <p class="crumb"><a th:href="@{/admin/players}">← All players</a></p>
+
+    <h1 th:text="${player.displayName}">Name</h1>
+    <p class="subtitle">Times in UTC.</p>
+
+    <div th:replace="~{admin/fragments :: flash}"></div>
+
+    <section class="panel">
+        <h2>Account</h2>
+        <dl class="facts">
+            <div><dt>Player id</dt><dd class="mono" th:text="${player.playerId}">—</dd></div>
+            <div><dt>Country</dt><dd th:text="${player.country} ?: '— (no source yet)'">—</dd></div>
+            <div><dt>First seen</dt><dd th:text="${player.firstSeen()}">—</dd></div>
+            <div><dt>Last seen</dt><dd th:text="${player.lastSeen()}">—</dd></div>
+            <!--
+              Personal data, shown on this screen and no other. It is here because "is this
+              the same person as that account" is a question an administrator genuinely has,
+              and nowhere else because nobody else has that question.
+            -->
+            <div><dt>Last IP</dt><dd class="mono" th:text="${player.lastIp} ?: '—'">—</dd></div>
+        </dl>
+    </section>
+
+    <section class="panel">
+        <h2>Cloud save</h2>
+
+        <p class="muted" th:unless="${player.hasSave()}">
+            No save. This player has authenticated but never finished a run.
+        </p>
+
+        <div th:if="${player.hasSave()}">
+            <dl class="facts">
+                <div><dt>Version</dt><dd th:text="${player.saveVersion}">0</dd></div>
+                <div><dt>Last written</dt><dd th:text="${player.savedOn()}">—</dd></div>
+                <div><dt>Size</dt><dd th:text="${player.saveSize()}">—</dd></div>
+            </dl>
+            <!--
+              Shown exactly as stored. The server has never interpreted this object — the game
+              owns its shape — so unpacking it into named fields here would invent a second
+              opinion about it that goes stale the first time the client adds one.
+            -->
+            <details>
+                <summary>Raw save data</summary>
+                <pre th:text="${player.saveJson}">{}</pre>
+            </details>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h2>Scores</h2>
+        <p class="muted" th:if="${scores.isEmpty()}">Not on the leaderboard in either mode.</p>
+        <div class="table-wrap" th:unless="${scores.isEmpty()}">
+            <table>
+                <thead>
+                <tr>
+                    <th>Mode</th>
+                    <th class="num">Time</th>
+                    <th class="num">Kills</th>
+                    <th class="num">Level</th>
+                    <th class="num">Bosses</th>
+                    <th>Achieved</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="s : ${scores}">
+                    <td class="name" th:text="${s.mode}">mode</td>
+                    <td class="num" th:text="${s.clock()}">0:00</td>
+                    <td class="num" th:text="${s.kills}">0</td>
+                    <td class="num" th:text="${s.reachedLevel}">0</td>
+                    <td class="num" th:text="${s.bossesDefeated}">0</td>
+                    <td class="muted" th:text="${s.achievedOn()}">—</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="muted small">
+            Removing a single score is done from the
+            <a th:href="@{/admin/leaderboard}">leaderboard</a>; it leaves the account alone.
+        </p>
+    </section>
+
+    <section class="panel danger-zone">
+        <h2>Delete this player</h2>
+        <p class="muted">
+            Removes the account, the cloud save and both scores. There is no undo, and the
+            player's next launch will look like a brand new installation to the server.
+        </p>
+        <form th:action="@{'/admin/players/' + ${player.playerId} + '/delete'}" method="post">
+            <div class="field inline">
+                <label for="confirmName">
+                    Type <strong th:text="${player.displayName}">name</strong> to confirm
+                </label>
+                <input type="text" id="confirmName" name="confirmName" autocomplete="off" required>
+            </div>
+            <button type="submit" class="danger solid">Delete player</button>
+        </form>
+    </section>
+</main>
+
+</body>
+</html>
