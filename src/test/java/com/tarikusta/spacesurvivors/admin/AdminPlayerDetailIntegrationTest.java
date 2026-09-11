@@ -6,6 +6,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -89,10 +90,35 @@ class AdminPlayerDetailIntegrationTest {
     }
 
     @Test
-    @DisplayName("an id that is not a player answers 404")
+    @DisplayName("an id that is not a player answers 404 as a page, not as JSON")
     void unknownPlayerIs404() throws Exception {
+        // The status alone was already right before AdminErrorHandler existed — what was
+        // wrong was the body: a ProblemDetail document, correct for the game's endpoints and
+        // useless to somebody looking at a browser.
         mvc.perform(get("/admin/players/" + UUID.randomUUID()).with(user(ADMIN).roles("ADMIN")))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
+                .andExpect(content().string(containsString("Not found")));
+    }
+
+    @Test
+    @DisplayName("an address that is not even a uuid answers the same page")
+    void malformedIdIsAlsoAPage() throws Exception {
+        // Anyone can produce this by editing the address bar. Before the admin advice it was
+        // a 400 with a JSON body explaining the type conversion that failed.
+        mvc.perform(get("/admin/players/not-a-uuid").with(user(ADMIN).roles("ADMIN")))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML));
+    }
+
+    @Test
+    @DisplayName("the game's endpoints still answer JSON")
+    void theApiStillSpeaksJson() throws Exception {
+        // The other half of scoping that advice to the admin package. If it had been
+        // registered application-wide, this would now be an HTML page — which is what the
+        // Unity client would have had to parse.
+        mvc.perform(get("/v1/player"))
+                .andExpect(status().isUnauthorized());
     }
 
     // ── deleting ───────────────────────────────────────────────────────────────────

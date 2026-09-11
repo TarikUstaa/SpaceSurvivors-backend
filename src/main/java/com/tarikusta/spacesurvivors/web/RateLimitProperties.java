@@ -20,13 +20,22 @@ import java.time.Duration;
  *                   limiter from becoming a memory-exhaustion lever of its own
  * @param enabled    off switch. Left on everywhere; tests that are not about the limit
  *                   turn it off rather than counting requests.
+ * @param adminCapacity the same ceiling for the backoffice sign-in form, over the same
+ *                   window, and deliberately tighter. The two endpoints both spend a BCrypt
+ *                   hash per attempt, but what is behind them differs: a device secret is
+ *                   256 bits of randomness that nobody will ever guess, while an
+ *                   administrator's password was chosen by a person. Guessing is a real
+ *                   attack on one and not the other, so the one worth guessing gets fewer
+ *                   guesses. Ten a minute is far more than a human signing in needs and far
+ *                   less than a dictionary needs.
  */
 @ConfigurationProperties(prefix = "app.ratelimit")
 public record RateLimitProperties(
         @DefaultValue("true") boolean enabled,
         @DefaultValue("10") int capacity,
         @DefaultValue("1m") Duration window,
-        @DefaultValue("100000") int maxClients) {
+        @DefaultValue("100000") int maxClients,
+        @DefaultValue("10") int adminCapacity) {
 
     /**
      * Refuse to start on a configuration that cannot work.
@@ -44,6 +53,10 @@ public record RateLimitProperties(
         }
         if (maxClients < 1) {
             throw new IllegalArgumentException("app.ratelimit.max-clients must be at least 1, was " + maxClients);
+        }
+        if (adminCapacity < 1) {
+            throw new IllegalArgumentException(
+                    "app.ratelimit.admin-capacity must be at least 1, was " + adminCapacity);
         }
     }
 

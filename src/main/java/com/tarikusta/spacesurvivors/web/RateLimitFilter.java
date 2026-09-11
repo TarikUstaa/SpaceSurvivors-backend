@@ -17,7 +17,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 
 /**
  * Caps how often one caller may ask for a token.
@@ -50,7 +50,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
 
     /**
-     * The one path guarded for now, matched exactly.
+     * The device token endpoint, matched exactly.
      *
      * <p>Spring MVC does not route {@code /v1/auth/token/} or {@code /V1/Auth/Token} to
      * the handler — trailing-slash matching was removed in Spring 6 and paths are
@@ -59,45 +59,106 @@ public class RateLimitFilter extends OncePerRequestFilter {
      */
     static final String GUARDED_PATH = "/v1/auth/token";
 
-    private final Function<String, Bucket> buckets;
+    /**
+     * The backoffice sign-in form, which for a long time had no ceiling at all.
+     *
+     * <p>It spends the same BCrypt hash per attempt as the token endpoint, so it was always
+     * the same denial-of-service lever. What makes it the worse of the two is what sits
+     * behind it: a device secret is 256 bits of randomness and guessing it is not an attack
+     * anyone would attempt, while an administrator's password was chosen by a person and
+     * guessing it very much is. The endpoint nobody could exhaust was limited and the one
+     * somebody could was not.</p>
+     *
+     * <p>Note that this is Spring Security's {@code loginProcessingUrl} rather than a path
+     * any controller of ours serves — the form posts to a filter. That is precisely why the
+     * limit has to live out here, ahead of the security chain: there is no controller to put
+     * it in.</p>
+     */
+    static final String GUARDED_ADMIN_PATH = "/admin/login";
+
+    private final BiFunction<String, String, Bucket> buckets;
     private final ObjectMapper json;
     private final long capacity;
+    private final long adminCapacity;
 
-    RateLimitFilter(Function<String, Bucket> buckets, ObjectMapper json, long capacity) {
+    RateLimitFilter(BiFunction<String, String, Bucket> buckets, ObjectMapper json,
+                    long capacity, long adminCapacity) {
         this.buckets = buckets;
         this.json = json;
         this.capacity = capacity;
+        this.adminCapacity = adminCapacity;
     }
 
     /**
-     * Everything except the guarded path passes without touching a bucket.
+     * Everything except the guarded paths passes without touching a bucket.
      *
-     * <p>The filter is registered for all paths rather than for a URL pattern so that the
-     * path it guards is written down in exactly one place. A string comparison per request
-     * is not worth splitting that across two files to avoid.</p>
+     * <p>The filter is registered for all paths rather than for URL patterns so that the
+     * paths it guards are written down in exactly one place. Two string comparisons per
+     * request are not worth splitting that across two files to avoid.</p>
      */
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
-        return !HttpMethod.POST.matches(request.getMethod()) || !GUARDED_PATH.equals(pathWithinApplication(request));
+        if (!HttpMethod.POST.matches(request.getMethod())) {
+            return true;
+        }
+        String path = pathWithinApplication(request);
+        return !GUARDED_PATH.equals(path) && !GUARDED_ADMIN_PATH.equals(path);
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
 
-        ConsumptionProbe probe = buckets.apply(callerKey(request)).tryConsumeAndReturnRemaining(1);
+        String path = pathWithinApplication(request);
+        boolean admin = GUARDED_ADMIN_PATH.equals(path);
+
+        // Keyed by path as well as caller, so the two limits are genuinely separate. Sharing
+        // one bucket would mean an attacker pounding the login form could also lock every
+        // player behind that address out of the game — and, the other way round, that a busy
+        // mobile carrier's address could spend the allowance an administrator needs to sign
+        // in. Neither endpoint should be able to close the other.
+        ConsumptionProbe probe = buckets.apply(path, callerKey(request))
+                .tryConsumeAndReturnRemaining(1);
 
         // Headers go on before anything downstream can commit the response. The names carry
         // no "X-" prefix on purpose: RFC 6648 retired that convention in 2012, and these are
         // the names the IETF rate-limit draft settled on.
-        response.setHeader("RateLimit-Limit", Long.toString(capacity));
+        response.setHeader("RateLimit-Limit", Long.toString(admin ? adminCapacity : capacity));
         response.setHeader("RateLimit-Remaining", Long.toString(Math.max(0, probe.getRemainingTokens())));
 
         if (probe.isConsumed()) {
             chain.doFilter(request, response);
             return;
         }
-        refuse(request, response, probe);
+
+        if (admin) {
+            refuseAdmin(request, response, probe);
+        } else {
+            refuse(request, response, probe);
+        }
+    }
+
+    /**
+     * The same refusal, for someone holding a browser rather than writing a client.
+     *
+     * <p>A ProblemDetail document is the right answer to a program and a wall of JSON to a
+     * person, so the sign-in form is sent back to itself with a marker the page turns into a
+     * sentence. That makes the status a redirect rather than 429; {@code Retry-After} carries
+     * the wait, which RFC 9110 allows on a 3xx precisely for this — "wait this long before
+     * following the redirect".</p>
+     */
+    private void refuseAdmin(HttpServletRequest request, HttpServletResponse response,
+                             ConsumptionProbe probe) throws IOException {
+        long retryAfter = secondsUntilRefill(probe);
+
+        log.debug("rate limit hit for {} on {}, retry after {}s",
+                callerKey(request), GUARDED_ADMIN_PATH, retryAfter);
+
+        response.setHeader(HttpHeaders.RETRY_AFTER, Long.toString(retryAfter));
+        // A redirect rather than a rendered page: this filter runs before the dispatcher, so
+        // there is no view resolver here, and sending the browser back to the login page is
+        // the one thing that needs no machinery at all.
+        response.sendRedirect(request.getContextPath() + GUARDED_ADMIN_PATH + "?throttled");
     }
 
     /**

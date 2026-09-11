@@ -39,7 +39,7 @@ class RateLimitConcurrencyTest {
     @DisplayName("sixty-four simultaneous callers cannot spend more than the bucket holds")
     void concurrentBurstCannotExceedTheCapacity() throws Exception {
         RateLimitFilter filter = new RateLimitConfig().rateLimitFilterRegistration(
-                new RateLimitProperties(true, CAPACITY, Duration.ofMinutes(1), 1_000),
+                new RateLimitProperties(true, CAPACITY, Duration.ofMinutes(1), 1_000, CAPACITY),
                 new ObjectMapper()).getFilter();
 
         AtomicInteger allowed = new AtomicInteger();
@@ -86,7 +86,7 @@ class RateLimitConcurrencyTest {
     @DisplayName("separate callers hitting at once keep separate allowances")
     void concurrentDistinctCallersDoNotShareABucket() throws Exception {
         RateLimitFilter filter = new RateLimitConfig().rateLimitFilterRegistration(
-                new RateLimitProperties(true, CAPACITY, Duration.ofMinutes(1), 1_000),
+                new RateLimitProperties(true, CAPACITY, Duration.ofMinutes(1), 1_000, CAPACITY),
                 new ObjectMapper()).getFilter();
 
         AtomicInteger allowed = new AtomicInteger();

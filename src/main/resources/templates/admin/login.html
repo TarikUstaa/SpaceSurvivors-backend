@@ -18,6 +18,14 @@
         -->
         <p class="notice error" th:if="${param.error}">Sign-in failed. Check the username and password.</p>
         <p class="notice info" th:if="${param.logout}">Signed out.</p>
+        <!--
+          The rate limiter sent us back here. It runs before the security chain, so it has no
+          view to render and no flash attributes to leave — a query parameter is the whole
+          channel it has for saying what happened.
+        -->
+        <p class="notice warn" th:if="${param.throttled}">
+            Too many sign-in attempts. Wait a minute and try again.
+        </p>
 
         <!--
           th:action, not a plain action: it is what makes Thymeleaf add the hidden CSRF token

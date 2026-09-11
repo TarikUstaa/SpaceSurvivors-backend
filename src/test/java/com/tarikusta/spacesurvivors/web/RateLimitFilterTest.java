@@ -37,7 +37,7 @@ class RateLimitFilterTest {
 
     private static FilterRegistrationBean<RateLimitFilter> registration(int capacity) {
         return new RateLimitConfig().rateLimitFilterRegistration(
-                new RateLimitProperties(true, capacity, Duration.ofMinutes(1), 1_000), JSON);
+                new RateLimitProperties(true, capacity, Duration.ofMinutes(1), 1_000, capacity), JSON);
     }
 
     private static RateLimitFilter filterAllowing(int capacity) {
@@ -231,7 +231,7 @@ class RateLimitFilterTest {
         @DisplayName("the off switch actually unregisters the filter")
         void disabledMeansNotRegistered() {
             FilterRegistrationBean<RateLimitFilter> off = new RateLimitConfig().rateLimitFilterRegistration(
-                    new RateLimitProperties(false, 10, Duration.ofMinutes(1), 1_000), JSON);
+                    new RateLimitProperties(false, 10, Duration.ofMinutes(1), 1_000, 10), JSON);
 
             assertThat(off.isEnabled()).isFalse();
         }
@@ -245,7 +245,7 @@ class RateLimitFilterTest {
         @DisplayName("a capacity of zero is refused at startup, not at the first login")
         void zeroCapacityIsRejected() {
             // Left unchecked this refuses every login in the system, and does it silently.
-            assertThatThrownBy(() -> new RateLimitProperties(true, 0, Duration.ofMinutes(1), 1_000))
+            assertThatThrownBy(() -> new RateLimitProperties(true, 0, Duration.ofMinutes(1), 1_000, 10))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("capacity");
         }
@@ -253,7 +253,7 @@ class RateLimitFilterTest {
         @Test
         @DisplayName("a window of zero is refused at startup")
         void zeroWindowIsRejected() {
-            assertThatThrownBy(() -> new RateLimitProperties(true, 10, Duration.ZERO, 1_000))
+            assertThatThrownBy(() -> new RateLimitProperties(true, 10, Duration.ZERO, 1_000, 10))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("window");
         }
@@ -263,9 +263,84 @@ class RateLimitFilterTest {
         void retentionOutlastsRefill() {
             // Evicting sooner than a bucket refills would make forgetting a caller
             // indistinguishable from raising their limit.
-            RateLimitProperties limits = new RateLimitProperties(true, 10, Duration.ofMinutes(1), 1_000);
+            RateLimitProperties limits = new RateLimitProperties(true, 10, Duration.ofMinutes(1), 1_000, 10);
 
             assertThat(limits.retention()).isGreaterThanOrEqualTo(limits.window());
+        }
+    }
+
+    @Nested
+    @DisplayName("the backoffice sign-in form")
+    class AdminLogin {
+
+        /** A filter whose two guarded paths have deliberately different allowances. */
+        private RateLimitFilter filterAllowing(int deviceCapacity, int adminCapacity) {
+            return new RateLimitConfig().rateLimitFilterRegistration(
+                    new RateLimitProperties(true, deviceCapacity, Duration.ofMinutes(1),
+                            1_000, adminCapacity), JSON).getFilter();
+        }
+
+        private MockHttpServletResponse login(RateLimitFilter filter, String address) throws Exception {
+            return send(filter, "POST", RateLimitFilter.GUARDED_ADMIN_PATH, address);
+        }
+
+        @Test
+        @DisplayName("is limited at all — it spends the same BCrypt hash as the token endpoint")
+        void isLimited() throws Exception {
+            RateLimitFilter filter = filterAllowing(10, 2);
+
+            assertThat(login(filter, "10.0.0.1").getStatus()).isEqualTo(200);
+            assertThat(login(filter, "10.0.0.1").getStatus()).isEqualTo(200);
+
+            // The third is refused. Before this existed there was no third — or thousandth,
+            // against a password a person chose.
+            MockHttpServletResponse refused = login(filter, "10.0.0.1");
+            assertThat(refused.getStatus()).isEqualTo(HttpStatus.FOUND.value());
+            assertThat(refused.getRedirectedUrl()).endsWith("/admin/login?throttled");
+            assertThat(refused.getHeader(HttpHeaders.RETRY_AFTER)).isNotNull();
+        }
+
+        @Test
+        @DisplayName("is refused as a redirect, not as a JSON document")
+        void refusesWithAPage() throws Exception {
+            RateLimitFilter filter = filterAllowing(10, 1);
+            login(filter, "10.0.0.2");
+
+            MockHttpServletResponse refused = login(filter, "10.0.0.2");
+
+            // Whoever hit this limit is holding a browser. A ProblemDetail body is the right
+            // answer to a program and a wall of JSON to a person.
+            assertThat(refused.getContentAsString()).doesNotContain("problem");
+            assertThat(refused.getRedirectedUrl()).contains("throttled");
+        }
+
+        @Test
+        @DisplayName("holds its own bucket, so neither endpoint can spend the other's allowance")
+        void doesNotShareABucketWithTheTokenEndpoint() throws Exception {
+            RateLimitFilter filter = filterAllowing(2, 2);
+
+            // Drain the device endpoint completely from this address.
+            post(filter, "10.0.0.3");
+            post(filter, "10.0.0.3");
+            assertThat(passedThrough(post(filter, "10.0.0.3"))).isFalse();
+
+            // The administrator behind that same address — the same office, the same router —
+            // can still sign in. One shared bucket would turn an attack on either endpoint
+            // into an outage on the other.
+            assertThat(login(filter, "10.0.0.3").getStatus()).isEqualTo(200);
+        }
+
+        @Test
+        @DisplayName("a GET of the login page spends nothing")
+        void doesNotCountPageLoads() throws Exception {
+            RateLimitFilter filter = filterAllowing(10, 1);
+
+            // Only the POST costs a BCrypt hash. Counting the GET would mean the page stopped
+            // rendering after one look at it.
+            send(filter, "GET", RateLimitFilter.GUARDED_ADMIN_PATH, "10.0.0.4");
+            send(filter, "GET", RateLimitFilter.GUARDED_ADMIN_PATH, "10.0.0.4");
+
+            assertThat(login(filter, "10.0.0.4").getStatus()).isEqualTo(200);
         }
     }
 }

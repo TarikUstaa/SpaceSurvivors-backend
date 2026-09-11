@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import tools.jackson.databind.ObjectMapper;
 
-import java.util.function.Function;
+import java.util.function.BiFunction;
 
 /**
  * Wires {@link RateLimitFilter}: where its buckets live, and where in the filter chain it
@@ -64,26 +64,42 @@ public class RateLimitConfig {
         // when the window turns over. An interval refill would let a caller spend a full
         // bucket at the end of one window and another at the start of the next, which is
         // twice the intended rate at exactly the moment it matters.
-        Bandwidth bandwidth = Bandwidth.builder()
-                .capacity(limits.capacity())
-                .refillGreedy(limits.capacity(), limits.window())
-                .build();
+        Bandwidth deviceTokens = bandwidth(limits.capacity(), limits.window());
+        Bandwidth adminLogins = bandwidth(limits.adminCapacity(), limits.window());
 
         Cache<String, Bucket> buckets = Caffeine.newBuilder()
                 .maximumSize(limits.maxClients())
                 .expireAfterAccess(limits.retention())
                 .build();
 
+        // Keyed by guarded path as well as by caller, so the device endpoint and the
+        // backoffice login hold separate buckets — RateLimitFilter explains why neither
+        // should be able to spend the other's allowance. It is also what lets the two be
+        // sized differently, since the bandwidth is chosen when a key's bucket is first
+        // built.
+        //
         // Caffeine's two-argument get is atomic, so concurrent first requests from one
         // caller share a single bucket instead of each building one and overwriting the
         // others — which would have handed out a fresh allowance per racing thread.
-        Function<String, Bucket> store =
-                key -> buckets.get(key, unused -> Bucket.builder().addLimit(bandwidth).build());
+        BiFunction<String, String, Bucket> store = (path, caller) -> buckets.get(
+                path + "|" + caller,
+                unused -> Bucket.builder()
+                        .addLimit(RateLimitFilter.GUARDED_ADMIN_PATH.equals(path)
+                                ? adminLogins
+                                : deviceTokens)
+                        .build());
 
         var registration = new FilterRegistrationBean<>(
-                new RateLimitFilter(store, json, limits.capacity()));
+                new RateLimitFilter(store, json, limits.capacity(), limits.adminCapacity()));
         registration.setOrder(FILTER_ORDER);
         registration.setEnabled(limits.enabled());
         return registration;
+    }
+
+    private static Bandwidth bandwidth(long capacity, java.time.Duration window) {
+        return Bandwidth.builder()
+                .capacity(capacity)
+                .refillGreedy(capacity, window)
+                .build();
     }
 }

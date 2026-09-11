@@ -23,6 +23,7 @@ import static org.springframework.security.test.web.servlet.response.SecurityMoc
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -80,6 +81,17 @@ class AdminSecurityIntegrationTest {
         // under /admin/, so it is the admin chain — not the API's — that has to allow it.
         mvc.perform(get("/admin/assets/admin.css"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("admin pages refuse to be framed")
+    void cannotBeIframed() throws Exception {
+        // Clickjacking is the attack a panel like this invites: a transparent iframe over a
+        // page that says something harmless, positioned so the click lands on Delete. Spring
+        // Security sends this header by default — asserted because "by default" is a thing
+        // that a later .headers() customisation can quietly switch off.
+        mvc.perform(get("/admin/login"))
+                .andExpect(header().string("X-Frame-Options", "DENY"));
     }
 
     @Test
