@@ -895,10 +895,10 @@ field called `service`, double blank lines, and 15 lines past 100 columns.
 6. **Firebase auth** — optional now that D19 exists; it would add "recover my account on a
    new phone", which is the honest gap in device-based identity. `player_id` stays stable,
    so still cheap to add. `docs/firebase-setup.md` (from the scrapped repo) needs rewriting.
-7. ~~**Backoffice**~~ — **live 2026-09-11**, four screens. See the section above. Still open
-   within it: search and pagination once the player list outgrows a screen, ending other
-   sessions when a password changes (`SessionRegistry`), a second administrator account, and
-   a real audit table instead of log lines.
+7. ~~**Backoffice**~~ — **live 2026-09-11**, five screens. See the section above. ~~A real audit
+   table instead of log lines~~ — **done the same day** (D28). Still open within it: search and
+   pagination once the player list outgrows a screen, ending other sessions when a password
+   changes (`SessionRegistry`), and a second administrator account.
 
 ## Local run
 
