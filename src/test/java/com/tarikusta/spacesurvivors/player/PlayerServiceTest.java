@@ -4,6 +4,7 @@ import com.tarikusta.spacesurvivors.exception.AlreadyTakenException;
 import com.tarikusta.spacesurvivors.exception.AuthenticationFailedException;
 import com.tarikusta.spacesurvivors.exception.InvalidInputException;
 import com.tarikusta.spacesurvivors.exception.NotFoundException;
+import com.tarikusta.spacesurvivors.geo.CountryLookup;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -38,6 +39,7 @@ class PlayerServiceTest {
 
     private PlayerProfileRepository players;
     private PasswordEncoder passwordEncoder;
+    private CountryLookup countries;
     private PlayerService service;
 
     @BeforeEach
@@ -46,7 +48,10 @@ class PlayerServiceTest {
         // The real encoder, not a mock: hashing is the point of these tests, and BCrypt's
         // own matches() is what decides whether a device is let in.
         passwordEncoder = new BCryptPasswordEncoder();
-        service = new PlayerService(players, passwordEncoder);
+        // Answers null unless a test says otherwise, which is also what the real one answers
+        // for the loopback address these tests sign in from.
+        countries = Mockito.mock(CountryLookup.class);
+        service = new PlayerService(players, passwordEncoder, countries);
     }
 
     /**
@@ -75,7 +80,7 @@ class PlayerServiceTest {
             when(players.findByDeviceId(DEVICE))
                     .thenReturn(Optional.empty())
                     .thenReturn(Optional.of(created));
-            when(players.insertIfFree(eq(DEVICE), anyString(), eq(IP), anyString())).thenReturn(1);
+            when(players.insertIfFree(eq(DEVICE), anyString(), eq(IP), any(), anyString())).thenReturn(1);
 
             assertThat(service.authenticateDevice(DEVICE, SECRET, IP)).isEqualTo(CREATED);
         }
@@ -87,12 +92,12 @@ class PlayerServiceTest {
             when(players.findByDeviceId(DEVICE))
                     .thenReturn(Optional.empty())
                     .thenReturn(Optional.of(created));
-            when(players.insertIfFree(anyString(), anyString(), any(), anyString())).thenReturn(1);
+            when(players.insertIfFree(anyString(), anyString(), any(), any(), anyString())).thenReturn(1);
 
             service.authenticateDevice(DEVICE, SECRET, IP);
 
             ArgumentCaptor<String> stored = ArgumentCaptor.forClass(String.class);
-            verify(players).insertIfFree(anyString(), anyString(), any(), stored.capture());
+            verify(players).insertIfFree(anyString(), anyString(), any(), any(), stored.capture());
             assertThat(stored.getValue()).isNotEqualTo(SECRET).startsWith("$2");
             assertThat(passwordEncoder.matches(SECRET, stored.getValue())).isTrue();
         }
@@ -103,7 +108,34 @@ class PlayerServiceTest {
             when(players.findByDeviceId(DEVICE)).thenReturn(Optional.of(known));
 
             assertThat(service.authenticateDevice(DEVICE, SECRET, IP)).isEqualTo(EXISTING);
-            verify(players).touch(EXISTING, IP);
+            verify(players).touch(EXISTING, IP, null);
+        }
+
+        @Test
+        @DisplayName("the country behind the address is recorded with the sign-in")
+        void recordsTheCountryOfAKnownDevice() {
+            PlayerProfile known = profile(EXISTING, passwordEncoder.encode(SECRET));
+            when(players.findByDeviceId(DEVICE)).thenReturn(Optional.of(known));
+            when(countries.of(IP)).thenReturn("TR");
+
+            service.authenticateDevice(DEVICE, SECRET, IP);
+
+            verify(players).touch(EXISTING, IP, "TR");
+        }
+
+        @Test
+        @DisplayName("a new player's country is set at registration")
+        void recordsTheCountryOfANewDevice() {
+            PlayerProfile created = profile(CREATED, null);
+            when(players.findByDeviceId(DEVICE))
+                    .thenReturn(Optional.empty())
+                    .thenReturn(Optional.of(created));
+            when(players.insertIfFree(anyString(), anyString(), any(), any(), anyString())).thenReturn(1);
+            when(countries.of(IP)).thenReturn("DE");
+
+            service.authenticateDevice(DEVICE, SECRET, IP);
+
+            verify(players).insertIfFree(eq(DEVICE), anyString(), eq(IP), eq("DE"), anyString());
         }
 
         @Test
@@ -114,7 +146,7 @@ class PlayerServiceTest {
 
             assertThatThrownBy(() -> service.authenticateDevice(DEVICE, "not-the-right-secret-at-all", IP))
                     .isInstanceOf(AuthenticationFailedException.class);
-            verify(players, never()).touch(any(), anyString());
+            verify(players, never()).touch(any(), anyString(), any());
         }
 
         @Test
@@ -157,7 +189,7 @@ class PlayerServiceTest {
             when(players.findByDeviceId(DEVICE))
                     .thenReturn(Optional.empty())        // nothing there when we looked
                     .thenReturn(Optional.of(theirs));    // someone inserted while we tried
-            when(players.insertIfFree(anyString(), anyString(), any(), anyString())).thenReturn(0);
+            when(players.insertIfFree(anyString(), anyString(), any(), any(), anyString())).thenReturn(0);
 
             assertThat(service.authenticateDevice(DEVICE, SECRET, IP)).isEqualTo(EXISTING);
         }
@@ -169,21 +201,21 @@ class PlayerServiceTest {
                     .thenReturn(Optional.empty())        // before the first attempt
                     .thenReturn(Optional.empty())        // that name was taken
                     .thenReturn(Optional.of(created));   // the next one was free
-            when(players.insertIfFree(anyString(), anyString(), any(), anyString()))
+            when(players.insertIfFree(anyString(), anyString(), any(), any(), anyString()))
                     .thenReturn(0)
                     .thenReturn(1);
 
             assertThat(service.authenticateDevice(DEVICE, SECRET, IP)).isEqualTo(CREATED);
 
             ArgumentCaptor<String> names = ArgumentCaptor.forClass(String.class);
-            verify(players, Mockito.times(2)).insertIfFree(anyString(), names.capture(), any(), anyString());
+            verify(players, Mockito.times(2)).insertIfFree(anyString(), names.capture(), any(), any(), anyString());
             assertThat(names.getAllValues()).doesNotHaveDuplicates();
         }
 
         @Test
         void givesUpRatherThanLoopingForeverIfEveryNameClashes() {
             when(players.findByDeviceId(DEVICE)).thenReturn(Optional.empty());
-            when(players.insertIfFree(anyString(), anyString(), any(), anyString())).thenReturn(0);
+            when(players.insertIfFree(anyString(), anyString(), any(), any(), anyString())).thenReturn(0);
 
             assertThatThrownBy(() -> service.authenticateDevice(DEVICE, SECRET, IP))
                     .isInstanceOf(IllegalStateException.class);
@@ -195,12 +227,12 @@ class PlayerServiceTest {
             when(players.findByDeviceId(anyString()))
                     .thenReturn(Optional.empty())
                     .thenReturn(Optional.of(created));
-            when(players.insertIfFree(anyString(), anyString(), any(), anyString())).thenReturn(1);
+            when(players.insertIfFree(anyString(), anyString(), any(), any(), anyString())).thenReturn(1);
 
             service.authenticateDevice(DEVICE, SECRET, IP);
 
             ArgumentCaptor<String> name = ArgumentCaptor.forClass(String.class);
-            verify(players).insertIfFree(anyString(), name.capture(), any(), anyString());
+            verify(players).insertIfFree(anyString(), name.capture(), any(), any(), anyString());
             assertThat(name.getValue()).matches("User\\d{6}");
         }
     }

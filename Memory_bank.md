@@ -865,6 +865,42 @@ what else is uneven: tabs in `SpacesurvivorsApplication` (the Initializr default
 imports out of order in two services, `if` without braces in three places, an unused import, a
 field called `service`, double blank lines, and 15 lines past 100 columns.
 
+### D31 — country comes from a file we ship, not a header we are given (2026-09-15)
+
+`country` had been NULL since V1, waiting on "a host or CDN supplies a country header". Nothing
+ever did: Azure's ingress forwards `X-Forwarded-*` and no geography, and the only way to get such
+a header would have been to put a CDN in front of the origin — a DNS and infrastructure change,
+and a new thing to trust, to fill in one display field. So the lookup moved into the application:
+**MaxMind GeoLite2, read from a local file** in `geo/CountryLookup`, resolved once per sign-in
+in `PlayerService.authenticateDevice` and written by the same two statements that already
+maintain `last_ip`.
+
+**Why a local database and not one of the free geolocation APIs.** The API version would send
+every player's IP to a third party on every sign-in, and put that third party's latency and
+uptime inside authentication. A file that ships in the image costs microseconds and tells nobody
+anything.
+
+**The whole design is "optional, and honest about it".** No database configured, an unreadable
+one, a private address, an address MaxMind does not cover — every one of those answers null, and
+null means *leave the column alone* rather than *erase it* (`COALESCE` in both statements). This
+is not defensive padding: a developer's machine has no copy of the licensed file, the test suite
+has none, and the deployment had none on the day this was written. The service starts and serves
+identically in all of those states, which is what made it safe to merge before the MaxMind
+account existed.
+
+**Two things the build got right only after being tested.** `eclipse-temurin` ships neither
+`curl` nor `wget`, so the download step installs curl itself — into the build stage only, so the
+running image still has no fetching tool in it. And BuildKit deliberately keeps secrets out of
+the cache key, which means the download layer would have been reused forever: the first build
+after a license key was finally configured would have silently skipped it and shipped no
+database. `ARG GEOIP_REFRESH`, set to the commit sha by CI, is what stops that — and it also
+means the address table is never older than the release. Both paths were verified by building
+the image: no key builds and ships without the file, a bad key fails the build loudly (curl
+exit 22) rather than producing a country-less deployment nobody notices for weeks.
+
+**Still unset until Tarik adds `MAXMIND_LICENSE_KEY`** to the repository's secrets. Until then
+the behaviour is exactly the old one, by design.
+
 ## Open / next
 
 *Priority order.*
@@ -873,8 +909,10 @@ field called `service`, double blank lines, and 15 lines past 100 columns.
 > shows the ranked board with Infinite/Campaign tabs, and the Profile screen renames through
 > `PATCH /v1/player`. Every endpoint this service exposes now has a caller.
 
-1. **`country` has no source.** The column stays NULL until a host or CDN supplies a country
-   header, and the Profile screen shows a dash for it. Locally `last_ip` is always `::1`.
+1. ~~**`country` has no source.**~~ — **done 2026-09-15.** GeoLite2 read locally; see D31.
+   The one remaining step is Tarik's: add `MAXMIND_LICENSE_KEY` to the repository secrets, and
+   the next deploy starts filling the column. Locally `last_ip` is always `::1`, which has no
+   country, so this stays invisible on a developer's machine either way.
 2. **IP retention.** `last_ip` is personal data, stored deliberately; it needs a purpose and
    a "delete IPs older than N days" job before this is public.
 3. **Pagination** — the board is capped at 100 rows and there is no `page`. Fine now,

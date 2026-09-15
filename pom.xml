@@ -108,6 +108,19 @@
 			<artifactId>caffeine</artifactId>
 		</dependency>
 
+		<!--
+			IP to country, offline. The player's address is looked up in a local MaxMind
+			GeoLite2 file and never leaves this process — the alternative, one of the free
+			geolocation HTTP APIs, would mean handing a third party every player's IP on
+			every sign-in, and adding a network call to the authentication path that can
+			time out. See geo/CountryLookup; the file itself is not in this repository.
+		-->
+		<dependency>
+			<groupId>com.maxmind.geoip2</groupId>
+			<artifactId>geoip2</artifactId>
+			<version>4.3.1</version>
+		</dependency>
+
 		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>

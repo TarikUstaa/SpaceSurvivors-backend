@@ -33,7 +33,17 @@ public class PlayerProfile {
     @Column(name = "display_name", nullable = false)
     private String displayName;
 
-    @Column
+    /**
+     * ISO-3166 alpha-2, derived from {@link #lastIp} at sign-in, or null when the address
+     * could not be placed — see {@link com.tarikusta.spacesurvivors.geo.CountryLookup}.
+     *
+     * <p>Read-only to JPA for the same reason as {@code lastIp}, if not the same cause:
+     * both are written by {@link PlayerProfileRepository#insertIfFree} and
+     * {@link PlayerProfileRepository#touch}, which set them together because one is computed
+     * from the other. Letting dirty checking write this one as well would mean a second
+     * writer with its own idea of when the value is current.</p>
+     */
+    @Column(insertable = false, updatable = false)
     private String country;
 
     /**

@@ -43,7 +43,7 @@ class PlayerProfileRepositoryTest {
     void insertsWhenNothingIsTaken() {
         String deviceId = device();
 
-        assertThat(players.insertIfFree(deviceId, name(), "127.0.0.1", HASH)).isEqualTo(1);
+        assertThat(players.insertIfFree(deviceId, name(), "127.0.0.1", null, HASH)).isEqualTo(1);
 
         // Proves @Modifying(clearAutomatically) did its job: without it this read could be
         // answered from a persistence context that never saw the native insert.
@@ -57,31 +57,31 @@ class PlayerProfileRepositoryTest {
     @DisplayName("a second insert for the same device reports 0 instead of raising")
     void reportsRatherThanRaisingOnADuplicateDevice() {
         String deviceId = device();
-        players.insertIfFree(deviceId, name(), null, HASH);
+        players.insertIfFree(deviceId, name(), null, null, HASH);
 
         // The whole point: no exception, so the caller's transaction survives and it can
         // decide what to do. A raised violation would abort the transaction outright.
-        assertThat(players.insertIfFree(deviceId, name(), null, HASH)).isZero();
+        assertThat(players.insertIfFree(deviceId, name(), null, null, HASH)).isZero();
     }
 
     @Test
     @DisplayName("a taken name reports 0, whatever its casing")
     void reportsADuplicateNameCaseInsensitively() {
-        players.insertIfFree(device(), "Tarik", null, HASH);
+        players.insertIfFree(device(), "Tarik", null, null, HASH);
 
-        assertThat(players.insertIfFree(device(), "Tarik", null, HASH)).isZero();
-        assertThat(players.insertIfFree(device(), "TARIK", null, HASH)).isZero();
-        assertThat(players.insertIfFree(device(), "tArIk", null, HASH)).isZero();
+        assertThat(players.insertIfFree(device(), "Tarik", null, null, HASH)).isZero();
+        assertThat(players.insertIfFree(device(), "TARIK", null, null, HASH)).isZero();
+        assertThat(players.insertIfFree(device(), "tArIk", null, null, HASH)).isZero();
     }
 
     @Test
     @DisplayName("touch does nothing while the row is fresh")
     void touchIsThrottled() {
         String deviceId = device();
-        players.insertIfFree(deviceId, name(), "127.0.0.1", HASH);
+        players.insertIfFree(deviceId, name(), "127.0.0.1", null, HASH);
         UUID playerId = players.findByDeviceId(deviceId).orElseThrow().getPlayerId();
 
-        players.touch(playerId, "8.8.8.8");
+        players.touch(playerId, "8.8.8.8", null);
 
         // Just inserted, so updated_at is seconds old and the five-minute guard holds.
         assertThat(currentIp(playerId)).isEqualTo("127.0.0.1");
@@ -91,12 +91,12 @@ class PlayerProfileRepositoryTest {
     @DisplayName("touch writes once the row is stale enough")
     void touchWritesAfterTheInterval() {
         String deviceId = device();
-        players.insertIfFree(deviceId, name(), "127.0.0.1", HASH);
+        players.insertIfFree(deviceId, name(), "127.0.0.1", null, HASH);
         UUID playerId = players.findByDeviceId(deviceId).orElseThrow().getPlayerId();
 
         ageRowPastTheThreshold(playerId);
 
-        players.touch(playerId, "8.8.8.8");
+        players.touch(playerId, "8.8.8.8", null);
 
         assertThat(currentIp(playerId)).isEqualTo("8.8.8.8");
     }
@@ -105,13 +105,51 @@ class PlayerProfileRepositoryTest {
     @DisplayName("a request with no usable address keeps the last one known")
     void touchDoesNotErasePreviousAddress() {
         String deviceId = device();
-        players.insertIfFree(deviceId, name(), "127.0.0.1", HASH);
+        players.insertIfFree(deviceId, name(), "127.0.0.1", null, HASH);
         UUID playerId = players.findByDeviceId(deviceId).orElseThrow().getPlayerId();
         ageRowPastTheThreshold(playerId);
 
-        players.touch(playerId, null);
+        players.touch(playerId, null, null);
 
         assertThat(currentIp(playerId)).isEqualTo("127.0.0.1");
+    }
+
+    @Test
+    @DisplayName("a country given at registration is stored")
+    void insertKeepsTheCountry() {
+        String deviceId = device();
+
+        players.insertIfFree(deviceId, name(), "88.230.1.1", "TR", HASH);
+
+        assertThat(players.findByDeviceId(deviceId).orElseThrow().getCountry()).isEqualTo("TR");
+    }
+
+    @Test
+    @DisplayName("touch moves the country along with the address")
+    void touchUpdatesTheCountry() {
+        String deviceId = device();
+        players.insertIfFree(deviceId, name(), "88.230.1.1", "TR", HASH);
+        UUID playerId = players.findByDeviceId(deviceId).orElseThrow().getPlayerId();
+        ageRowPastTheThreshold(playerId);
+
+        players.touch(playerId, "1.1.1.1", "DE");
+
+        assertThat(currentCountry(playerId)).isEqualTo("DE");
+    }
+
+    @Test
+    @DisplayName("a sign-in that could not be placed keeps the last known country")
+    void touchDoesNotEraseThePreviousCountry() {
+        String deviceId = device();
+        players.insertIfFree(deviceId, name(), "88.230.1.1", "TR", HASH);
+        UUID playerId = players.findByDeviceId(deviceId).orElseThrow().getPlayerId();
+        ageRowPastTheThreshold(playerId);
+
+        // What a lookup answers for an address it cannot place — and for every address at
+        // all when no GeoIP database is configured.
+        players.touch(playerId, "10.0.0.7", null);
+
+        assertThat(currentCountry(playerId)).isEqualTo("TR");
     }
 
     /**
@@ -132,6 +170,11 @@ class PlayerProfileRepositoryTest {
 
     private String currentIp(UUID playerId) {
         return db.sql("SELECT host(last_ip) FROM player_profile WHERE player_id = :id")
+                .param("id", playerId).query(String.class).single();
+    }
+
+    private String currentCountry(UUID playerId) {
+        return db.sql("SELECT country FROM player_profile WHERE player_id = :id")
                 .param("id", playerId).query(String.class).single();
     }
 }

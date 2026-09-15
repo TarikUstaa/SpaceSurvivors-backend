@@ -37,13 +37,14 @@ public interface PlayerProfileRepository extends JpaRepository<PlayerProfile, UU
      */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query(value = """
-            INSERT INTO player_profile (device_id, display_name, last_ip, device_secret_hash)
-            VALUES (:deviceId, :displayName, CAST(:ip AS inet), :secretHash)
+            INSERT INTO player_profile (device_id, display_name, last_ip, country, device_secret_hash)
+            VALUES (:deviceId, :displayName, CAST(:ip AS inet), :country, :secretHash)
             ON CONFLICT DO NOTHING
             """, nativeQuery = true)
     int insertIfFree(@Param("deviceId") String deviceId,
                      @Param("displayName") String displayName,
                      @Param("ip") String ip,
+                     @Param("country") String country,
                      @Param("secretHash") String secretHash);
 
     /**
@@ -53,13 +54,20 @@ public interface PlayerProfileRepository extends JpaRepository<PlayerProfile, UU
      * request — reads included. Writing each time would mean a row update and a WAL record
      * per API call for a value nobody needs to the second. {@code COALESCE} keeps the last
      * known address when the current request has no usable one.</p>
+     *
+     * <p>The country is refreshed alongside the address and by the same rule, because it is
+     * derived from it: a player who moves gets a new one, and a sign-in that could not be
+     * placed leaves the last known answer alone rather than erasing it.</p>
      */
     @Modifying(clearAutomatically = true)
     @Query(value = """
             UPDATE player_profile
-               SET last_ip = COALESCE(CAST(:ip AS inet), last_ip)
+               SET last_ip = COALESCE(CAST(:ip AS inet), last_ip),
+                   country = COALESCE(CAST(:country AS text), country)
              WHERE player_id = :playerId
                AND updated_at < now() - interval '5 minutes'
             """, nativeQuery = true)
-    void touch(@Param("playerId") UUID playerId, @Param("ip") String ip);
+    void touch(@Param("playerId") UUID playerId,
+               @Param("ip") String ip,
+               @Param("country") String country);
 }

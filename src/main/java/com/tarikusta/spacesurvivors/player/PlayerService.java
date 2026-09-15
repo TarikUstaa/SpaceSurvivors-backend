@@ -4,6 +4,7 @@ import com.tarikusta.spacesurvivors.exception.AlreadyTakenException;
 import com.tarikusta.spacesurvivors.exception.AuthenticationFailedException;
 import com.tarikusta.spacesurvivors.exception.InvalidInputException;
 import com.tarikusta.spacesurvivors.exception.NotFoundException;
+import com.tarikusta.spacesurvivors.geo.CountryLookup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -40,10 +41,13 @@ public class PlayerService {
 
     private final PlayerProfileRepository players;
     private final PasswordEncoder passwordEncoder;
+    private final CountryLookup countries;
 
-    public PlayerService(PlayerProfileRepository players, PasswordEncoder passwordEncoder) {
+    public PlayerService(PlayerProfileRepository players, PasswordEncoder passwordEncoder,
+                         CountryLookup countries) {
         this.players = players;
         this.passwordEncoder = passwordEncoder;
+        this.countries = countries;
     }
 
     /**
@@ -64,9 +68,13 @@ public class PlayerService {
      */
     @Transactional
     public UUID authenticateDevice(String deviceId, String rawSecret, String ip) {
+        // Resolved once per sign-in, before either path needs it. Null whenever the address
+        // cannot be placed, which the two statements below both treat as "leave it alone".
+        String country = countries.of(ip);
+
         Optional<PlayerProfile> existing = players.findByDeviceId(deviceId);
         if (existing.isEmpty()) {
-            return register(deviceId, rawSecret, ip);
+            return register(deviceId, rawSecret, ip, country);
         }
 
         PlayerProfile profile = existing.get();
@@ -80,7 +88,7 @@ public class PlayerService {
 
         // Authenticating is the natural "last seen": it happens once a session rather than
         // on every read, so nothing has to write on the hot path any more.
-        players.touch(profile.getPlayerId(), ip);
+        players.touch(profile.getPlayerId(), ip, country);
         return profile.getPlayerId();
     }
 
@@ -147,10 +155,10 @@ public class PlayerService {
      * recovery query and the next attempt would both fail. See
      * {@link PlayerProfileRepository#insertIfFree}.</p>
      */
-    private UUID register(String deviceId, String rawSecret, String ip) {
+    private UUID register(String deviceId, String rawSecret, String ip, String country) {
         String secretHash = passwordEncoder.encode(rawSecret);
         for (int attempt = 0; attempt < MAX_NAME_ATTEMPTS; attempt++) {
-            players.insertIfFree(deviceId, generateName(), ip, secretHash);
+            players.insertIfFree(deviceId, generateName(), ip, country, secretHash);
 
             // A row for this device now means either our insert landed or a concurrent
             // request for the same device won — both are the right answer. No row means
