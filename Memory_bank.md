@@ -911,8 +911,14 @@ or so after it turns over and a deploy on the 1st should not fail for that. A bu
 with no file *does* fail (`test -s`): an empty `/geoip` would mean a quietly country-less
 deployment, which is the failure mode worth being loud about.
 
-**Nothing left to configure.** No account, no key, no secret — the column starts filling on the
-next deploy.
+**Nothing left to configure.** No account, no key, no secret.
+
+**Verified live 2026-09-15**, end to end. The deployed service's own log holds both halves of
+the story — `WARN … GeoLite2-Country.mmdb not found — player country will stay unset` from the
+MaxMind build that shipped without a key (the optional path behaving exactly as designed, the
+service serving normally), then `INFO … GeoIP database loaded from
+/app/geoip/dbip-country-lite.mmdb` from the DB-IP build. A sign-in from Tarik's machine wrote
+`TR`, and it reads back on both the Unity profile screen and the backoffice player list.
 
 ## Open / next
 
