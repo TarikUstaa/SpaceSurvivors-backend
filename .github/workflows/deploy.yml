@@ -75,9 +75,9 @@ jobs:
       # Two tags on purpose: the commit sha is what makes a rollback possible ("run the
       # image from the commit before the bad one"), and :latest is what the container app is
       # configured to pull.
-      # MAXMIND_LICENSE_KEY is passed as a build secret, never a build arg — see the Dockerfile.
-      # An unset secret is not an error: the build then ships without the GeoIP database and the
-      # service leaves player country unset, which is exactly how it behaved before.
+      # GEOIP_REFRESH is the commit sha so the GeoIP table is re-fetched on every deploy rather
+      # than served from a cached layer forever — see the Dockerfile. It carries no secret;
+      # the database needs no credentials at all.
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -88,8 +88,6 @@ jobs:
             ${{ env.IMAGE }}:${{ env.SHA }}
           build-args: |
             GEOIP_REFRESH=${{ env.SHA }}
-          secrets: |
-            maxmind_key=${{ secrets.MAXMIND_LICENSE_KEY }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

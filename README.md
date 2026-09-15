@@ -61,3 +61,11 @@ Every endpoint needs `Authorization: Bearer <token>` except `POST /v1/auth/token
 | `GET` / `PATCH /v1/player` | who you are; change your display name |
 | `GET` / `PUT /v1/progress` | the save blob, with optimistic locking |
 | `GET` / `POST /v1/leaderboard` | the board, and your best run per mode |
+
+## Attribution
+
+IP Geolocation by [DB-IP](https://db-ip.com), used under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). A player's country is resolved from
+their sign-in address against a local copy of DB-IP's IP-to-Country Lite database. The file is
+downloaded when the container image is built, and no address ever leaves this server to
+resolve it. See `geo/CountryLookup`.

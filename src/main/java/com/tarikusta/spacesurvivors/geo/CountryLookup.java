@@ -20,22 +20,24 @@ import java.util.Optional;
 /**
  * An address to an ISO-3166 alpha-2 country code, or null.
  *
- * <p>The lookup is a local file — a MaxMind GeoLite2 database read into memory at startup —
- * so it costs microseconds and no network call. That matters because this runs inside
- * authentication: a geolocation HTTP API would put a third party, and its timeouts, on the
- * path between a player and their own save.</p>
+ * <p>The lookup is a local file — DB-IP's IP-to-Country Lite database, in MaxMind's
+ * {@code .mmdb} format and read into memory at startup — so it costs microseconds and no
+ * network call. That matters because this runs inside authentication: a geolocation HTTP API
+ * would put a third party, and its timeouts, on the path between a player and their own save,
+ * and would hand that third party every player's address while it was at it.</p>
  *
  * <p><b>Optional by design.</b> With no database configured, or a file that cannot be read,
  * every lookup answers null and the application starts and serves normally — {@code country}
  * simply stays NULL, exactly as it was before any of this existed. A developer's machine has
- * no copy of the file, the test suite has none, and a deployment whose license key has not
- * been set up yet has none either; none of those is a reason to refuse to boot. The database
- * is licensed and redistributable only under MaxMind's terms, so it is not in this
- * repository — the image downloads it at build time.</p>
+ * no copy of the file and neither does the test suite; neither is a reason to refuse to boot.
+ * The file is not in this repository — it is 8MB, it is republished monthly, and the image
+ * downloads it at build time instead.</p>
  *
  * <p>Answering null is also the normal case in plenty of working deployments: private and
  * loopback addresses have no country, and neither do some perfectly valid public ones.
  * Callers must treat the country as a hint, never as a fact about a player.</p>
+ *
+ * <p>Data licensed CC-BY-4.0 by DB-IP — attribution is in README.md.</p>
  */
 @Component
 public class CountryLookup {
