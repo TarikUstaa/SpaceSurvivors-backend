@@ -122,6 +122,12 @@ public class AdminAudit {
                 callerIp);
     }
 
+    public void playerRenamed(String actor, UUID playerId, String from, String to,
+                              String callerIp) {
+        write(actor, AdminAction.PLAYER_RENAMED, String.valueOf(playerId),
+                "renamed player '" + from + "' to '" + to + "'", callerIp);
+    }
+
     public void testPlayersDeleted(String actor, int count, String callerIp) {
         write(actor, AdminAction.TEST_PLAYERS_DELETED, null,
                 "deleted all " + count + " test players, their saves and their scores", callerIp);

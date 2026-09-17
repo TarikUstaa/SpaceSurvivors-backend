@@ -70,6 +70,12 @@ public class AdminPlayerService {
     public record Created(Creation outcome, UUID playerId, String displayName, String problem) {
     }
 
+    public enum Rename { RENAMED, UNCHANGED, INVALID, TAKEN }
+
+    /** @param problem set only for {@link Rename#INVALID} */
+    public record Renamed(Rename outcome, String from, String to, String problem) {
+    }
+
     /** Generated names can collide; this many tries means something is really wrong. */
     private static final int NAME_ATTEMPTS = 5;
 
@@ -152,6 +158,41 @@ public class AdminPlayerService {
             }
         }
         return new Created(Creation.NAME_TAKEN, null, typed, null);
+    }
+
+    /**
+     * Change a player's display name — the answer to "this name is offensive".
+     *
+     * <p>The same rules the game's own rename applies ({@link DisplayNames}), and the same
+     * case-insensitive uniqueness. Both roles: it is moderation, it is reversible, and it is
+     * audited with the old name — which, after the write, exists nowhere else.</p>
+     *
+     * <p>Does not move "last seen" ({@link AdminPlayerQueries#preserveLastSeen}): an operator
+     * renaming somebody is not that somebody signing in.</p>
+     */
+    @Transactional
+    @PreAuthorize(AdminRole.IS_STAFF)
+    public Renamed rename(String actor, UUID playerId, String requestedName, String callerIp) {
+        AdminPlayerDetail player = detail(playerId);
+        String name = requestedName == null ? "" : requestedName.trim();
+
+        Optional<String> problem = DisplayNames.problemWith(name);
+        if (problem.isPresent()) {
+            return new Renamed(Rename.INVALID, player.displayName(), name, problem.get());
+        }
+        if (name.equals(player.displayName())) {
+            return new Renamed(Rename.UNCHANGED, player.displayName(), name, null);
+        }
+
+        players.preserveLastSeen();
+        if (players.renameIfFree(playerId, name) == 0) {
+            return new Renamed(Rename.TAKEN, player.displayName(), name, null);
+        }
+
+        audit.playerRenamed(actor, playerId, player.displayName(), name, callerIp);
+        log.info("admin '{}' renamed player {} from '{}' to '{}'",
+                actor, playerId, player.displayName(), name);
+        return new Renamed(Rename.RENAMED, player.displayName(), name, null);
     }
 
     /**

@@ -26,6 +26,34 @@ public interface AdminPlayerQueries extends Repository<PlayerProfile, UUID> {
     @Query("select count(p) from PlayerProfile p")
     long countPlayers();
 
+    /**
+     * Mark the current transaction as not being the player: updates to {@code player_profile}
+     * made after this leave {@code updated_at} — "last seen" — where it was. See
+     * V7__preserve_last_seen.sql. Transaction-local, so it ends with the caller's transaction.
+     */
+    @Query(value = "SELECT set_config('app.preserve_updated_at', 'on', true)", nativeQuery = true)
+    String preserveLastSeen();
+
+    /**
+     * Rename, unless another player already holds the name in any capitalisation.
+     *
+     * <p>The check and the write are one statement, so the window in which somebody else could
+     * take the name between them is the statement itself rather than a round trip. The unique
+     * index on {@code lower(display_name)} remains the real guard. A player may change only the
+     * case of their own name — {@code o.player_id <> :id} leaves them out of the comparison.</p>
+     *
+     * @return 1 if renamed, 0 if the name was taken (or there is no such player)
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            UPDATE player_profile SET display_name = :name
+             WHERE player_id = :id
+               AND NOT EXISTS (SELECT 1 FROM player_profile o
+                                WHERE lower(o.display_name) = lower(:name)
+                                  AND o.player_id <> :id)
+            """, nativeQuery = true)
+    int renameIfFree(@Param("id") UUID playerId, @Param("name") String name);
+
     @Query("select count(g) from PlayerProgress g")
     long countSaves();
 

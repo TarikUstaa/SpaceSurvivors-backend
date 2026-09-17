@@ -40,6 +40,9 @@ public enum AdminAction {
      */
     SCORE_SET,
 
+    /** A player's display name was changed from the backoffice — usually a name report. */
+    PLAYER_RENAMED,
+
     /** A test player was made up in the backoffice. Nobody can sign in as it. */
     TEST_PLAYER_CREATED,
 

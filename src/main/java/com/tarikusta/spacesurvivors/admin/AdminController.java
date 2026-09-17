@@ -186,6 +186,27 @@ public class AdminController {
         return "redirect:/admin/players";
     }
 
+    @PostMapping("/players/{playerId}/rename")
+    public String rename(@PathVariable UUID playerId,
+                         @RequestParam(required = false) String displayName,
+                         RedirectAttributes redirect,
+                         Authentication authentication,
+                         HttpServletRequest request) {
+        AdminPlayerService.Renamed result = players.rename(
+                authentication.getName(), playerId, displayName, ClientAddress.of(request));
+
+        switch (result.outcome()) {
+            case RENAMED -> redirect.addFlashAttribute("message",
+                    "Renamed '" + result.from() + "' to '" + result.to() + "'.");
+            case UNCHANGED -> redirect.addFlashAttribute("warning", "That already is the name.");
+            case INVALID -> redirect.addFlashAttribute("warning",
+                    "Not renamed — " + result.problem() + ".");
+            case TAKEN -> redirect.addFlashAttribute("warning",
+                    "Not renamed — '" + result.to() + "' is already taken.");
+        }
+        return "redirect:/admin/players/" + playerId;
+    }
+
     /** Set one score by hand. Every outcome returns to the player, where the scores are listed. */
     @PostMapping("/players/{playerId}/score")
     public String setScore(@PathVariable UUID playerId,

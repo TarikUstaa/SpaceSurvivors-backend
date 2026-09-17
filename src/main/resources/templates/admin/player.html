@@ -36,6 +36,17 @@
             -->
             <div><dt>Last IP</dt><dd class="mono" th:text="${player.lastIp} ?: '—'">—</dd></div>
         </dl>
+
+        <!-- Both roles: the answer to a name report. Audited with the old name. -->
+        <form th:action="@{'/admin/players/' + ${player.playerId} + '/rename'}" method="post"
+              class="inline-form">
+            <div class="field inline">
+                <label for="displayName">Rename</label>
+                <input type="text" id="displayName" name="displayName" th:value="${player.displayName}"
+                       maxlength="16" pattern="[A-Za-z0-9_]{3,16}" autocomplete="off" required>
+            </div>
+            <button type="submit" class="small">Rename</button>
+        </form>
     </section>
 
     <section class="panel">
