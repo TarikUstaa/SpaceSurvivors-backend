@@ -46,6 +46,12 @@ public enum AdminAction {
      */
     AUDIT_EXPORTED,
 
+    /** The main-menu announcement was published or replaced. The text is in the summary. */
+    ANNOUNCEMENT_SET,
+
+    /** The main-menu announcement was taken down. */
+    ANNOUNCEMENT_CLEARED,
+
     /** A player's display name was changed from the backoffice — usually a name report. */
     PLAYER_RENAMED,
 

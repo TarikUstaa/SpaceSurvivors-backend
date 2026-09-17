@@ -408,3 +408,8 @@ form.search input[type="search"] { min-width: 18rem; max-width: 100%; }
 .codes code { font-size: 1.05rem; letter-spacing: 0.05em; user-select: all; }
 .steps { padding-left: 1.2rem; line-height: 1.6; }
 code.secret { word-break: break-all; user-select: all; font-size: 0.95rem; }
+
+/* ── game page (2026-09-17) ────────────────────────────────────────────────────────── */
+.announcement-preview { border: 1px solid var(--rule); border-left: 4px solid var(--accent); border-radius: 4px; padding: 0.6rem 0.8rem; margin-bottom: 1rem; }
+.announcement-preview.warning { border-left-color: var(--bad); }
+.announcement-preview p { margin: 0.2rem 0 0.5rem; }

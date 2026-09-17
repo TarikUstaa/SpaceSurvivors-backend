@@ -134,6 +134,15 @@ public class AdminAudit {
                 + (truncated ? ", cut at the export limit" : ""), callerIp);
     }
 
+    public void announcementSet(String actor, String level, String message, String callerIp) {
+        write(actor, AdminAction.ANNOUNCEMENT_SET, null,
+                "published a " + level + " announcement: \"" + message + "\"", callerIp);
+    }
+
+    public void announcementCleared(String actor, String callerIp) {
+        write(actor, AdminAction.ANNOUNCEMENT_CLEARED, null, "cleared the announcement", callerIp);
+    }
+
     public void playerRenamed(String actor, UUID playerId, String from, String to,
                               String callerIp) {
         write(actor, AdminAction.PLAYER_RENAMED, String.valueOf(playerId),

@@ -31,6 +31,8 @@
            th:classappend="${active == 'audit'} ? 'active'">Audit</a>
         <a th:if="${isAdmin}" th:href="@{/admin/users}"
            th:classappend="${active == 'users'} ? 'active'">Users</a>
+        <a th:if="${isAdmin}" th:href="@{/admin/game}"
+           th:classappend="${active == 'game'} ? 'active'">Game</a>
     </nav>
     <!-- The signed-in name is also the way to the account page; there is only one thing on it. -->
     <a class="who" th:href="@{/admin/password}" th:text="${admin}"

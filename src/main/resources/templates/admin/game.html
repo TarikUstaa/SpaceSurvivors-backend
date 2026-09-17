@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Game · SpaceSurvivors backoffice</title>
+    <link rel="stylesheet" th:href="@{/admin/assets/admin.css}">
+</head>
+<body>
+
+<header th:replace="~{admin/fragments :: topbar('game', ${admin})}"></header>
+
+<main>
+    <h1>Game</h1>
+    <p class="subtitle">
+        What every player sees. Changes reach a game the next time its main menu opens, and only
+        games with cloud sync on — the game makes no network calls otherwise.
+    </p>
+
+    <div th:replace="~{admin/fragments :: flash}"></div>
+
+    <section class="panel">
+        <h2>Announcement</h2>
+
+        <div th:if="${announcement}" class="announcement-preview" th:classappend="${announcement.level}">
+            <span class="muted small">Live now:</span>
+            <p th:text="${announcement.message}">Maintenance tonight.</p>
+            <form th:action="@{/admin/game/announcement/clear}" method="post">
+                <button type="submit" class="small">Take it down</button>
+            </form>
+        </div>
+        <p class="muted" th:unless="${announcement}">No announcement is showing.</p>
+
+        <form th:action="@{/admin/game/announcement}" method="post">
+            <div class="field">
+                <label for="message" th:text="${announcement} ? 'Replace with' : 'Message'">Message</label>
+                <textarea id="message" name="message" rows="3" th:attr="maxlength=${maxLength}" required></textarea>
+                <span class="hint">One line on the main menu, at most <span th:text="${maxLength}">280</span> characters.</span>
+            </div>
+            <div class="field">
+                <label for="level">Level</label>
+                <select id="level" name="level">
+                    <option value="info">info — a notice</option>
+                    <option value="warning">warning — maintenance, an outage</option>
+                </select>
+            </div>
+            <button type="submit" class="primary compact">Publish</button>
+        </form>
+    </section>
+</main>
+
+</body>
+</html>

@@ -92,7 +92,7 @@ public class AdminSecurityConfig {
                         // with no undo. "/**" also matches the bare path, so /admin/users itself
                         // is covered and not only what lies beneath it.
                         .requestMatchers("/admin/users/**", "/admin/audit/**",
-                                "/admin/test-players/**").hasRole("ADMIN")
+                                "/admin/test-players/**", "/admin/game/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/admin/players/*/delete").hasRole("ADMIN")
                         // Invented players and scores are public the moment they are written.
                         .requestMatchers(HttpMethod.POST,

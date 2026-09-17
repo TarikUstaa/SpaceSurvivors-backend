@@ -39,6 +39,7 @@ public class SecurityConfig {
             "/health",          // a probe has no credential to offer
             "/actuator/**",
             "/v1/auth/token",   // where a token is obtained; requiring one here is a circle
+            "/v1/announcement", // most needed exactly when signing in is broken; names no player
     };
 
     /**
