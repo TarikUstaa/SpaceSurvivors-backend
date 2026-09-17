@@ -44,8 +44,8 @@ public class AdminPlayerService {
     public record Deletion(Outcome outcome, String displayName) {
     }
 
-    /** The list page, with the numbers printed above it. */
-    public record Overview(List<AdminPlayerRow> rows, int total, long withSaves, long testPlayers) {
+    /** The numbers printed above the list — about every player, whatever the search. */
+    public record Overview(long total, long withSaves, long testPlayers) {
     }
 
     /**
@@ -74,30 +74,35 @@ public class AdminPlayerService {
     private static final int NAME_ATTEMPTS = 5;
 
     private final AdminPlayerQueries players;
+    private final AdminPlayerSearch search;
     private final AdminAudit audit;
     private final PasswordEncoder passwordEncoder;
     private final SecureRandom random = new SecureRandom();
 
-    public AdminPlayerService(AdminPlayerQueries players, AdminAudit audit,
-                              PasswordEncoder passwordEncoder) {
+    public AdminPlayerService(AdminPlayerQueries players, AdminPlayerSearch search,
+                              AdminAudit audit, PasswordEncoder passwordEncoder) {
         this.players = players;
+        this.search = search;
         this.audit = audit;
         this.passwordEncoder = passwordEncoder;
     }
 
     /**
-     * Every player, plus the counts the page shows above them.
+     * The counts the page shows above the list.
      *
-     * <p>Counted here rather than in the template or the controller: "how many of these have a
-     * cloud save" is a question about the data, and a controller that answers it is a
-     * controller that has started to know what the numbers mean.</p>
+     * <p>Asked of the database rather than counted from the rows on screen: the list is a page of
+     * a search now, and "230 players" must not turn into "50" because a page is fifty long.</p>
      */
     @Transactional(readOnly = true)
     public Overview overview() {
-        List<AdminPlayerRow> rows = players.listAll();
-        return new Overview(rows, rows.size(),
-                rows.stream().filter(AdminPlayerRow::hasSave).count(),
+        return new Overview(players.countPlayers(), players.countSaves(),
                 players.countTestPlayers());
+    }
+
+    /** One page of the searched, filtered list. */
+    @Transactional(readOnly = true)
+    public AdminPlayerSearch.Page search(String query, String filter, int page) {
+        return search.search(query, AdminPlayerSearch.Filter.parse(filter), page);
     }
 
     @Transactional(readOnly = true)

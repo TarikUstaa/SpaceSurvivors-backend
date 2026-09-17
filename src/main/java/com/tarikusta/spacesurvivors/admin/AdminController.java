@@ -88,11 +88,23 @@ public class AdminController {
         return "admin/error";
     }
 
+    /**
+     * The player list: searched, filtered and paged. The three parameters stay in the URL, so a
+     * search is a link that can be bookmarked or pasted to somebody.
+     */
     @GetMapping("/players")
-    public String players(Model model, Authentication authentication) {
+    public String players(@RequestParam(required = false) String q,
+                          @RequestParam(required = false) String filter,
+                          @RequestParam(defaultValue = "0") int page,
+                          Model model, Authentication authentication) {
         AdminPlayerService.Overview overview = players.overview();
+        AdminPlayerSearch.Page results = players.search(q, filter, page);
 
-        model.addAttribute("players", overview.rows());
+        model.addAttribute("results", results);
+        model.addAttribute("players", results.rows());
+        model.addAttribute("q", q == null ? "" : q.trim());
+        model.addAttribute("filter", AdminPlayerSearch.Filter.parse(filter));
+        model.addAttribute("filters", AdminPlayerSearch.Filter.values());
         model.addAttribute("playerCount", overview.total());
         model.addAttribute("savedCount", overview.withSaves());
         model.addAttribute("testCount", overview.testPlayers());

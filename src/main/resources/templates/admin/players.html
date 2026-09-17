@@ -53,6 +53,29 @@
         </div>
     </section>
 
+    <!-- GET, so a search is a URL: bookmarkable, shareable, and safe to refresh. -->
+    <form th:action="@{/admin/players}" method="get" class="inline-form search">
+        <div class="field inline">
+            <label for="q">Search</label>
+            <input type="search" id="q" name="q" th:value="${q}"
+                   placeholder="name, country (TR) or player id">
+        </div>
+        <div class="field inline">
+            <label for="filter">Show</label>
+            <select id="filter" name="filter">
+                <option th:each="f : ${filters}" th:value="${f.param()}" th:text="${f.label()}"
+                        th:selected="${f == filter}">All players</option>
+            </select>
+        </div>
+        <button type="submit" class="primary compact">Search</button>
+        <a th:if="${!q.isEmpty() or filter.name() != 'ALL'}" th:href="@{/admin/players}">Clear</a>
+    </form>
+
+    <p class="muted small" th:if="${results.matching > 0}">
+        Showing <span th:text="${results.from()}">1</span>–<span th:text="${results.to()}">50</span>
+        of <span th:text="${results.matching}">0</span>
+    </p>
+
     <div class="table-wrap">
         <table>
             <thead>
@@ -82,8 +105,17 @@
             </tr>
             </tbody>
         </table>
-        <p class="empty" th:if="${players.isEmpty()}">No players yet.</p>
+        <p class="empty" th:if="${players.isEmpty()}"
+           th:text="${playerCount == 0} ? 'No players yet.' : 'Nothing matches that search.'">No players yet.</p>
     </div>
+
+    <nav class="pager" th:if="${results.hasPrevious() or results.hasNext()}">
+        <a th:if="${results.hasPrevious()}"
+           th:href="@{/admin/players(q=${q}, filter=${filter.param()}, page=${results.page - 1})}">← Previous</a>
+        <span class="muted" th:text="|Page ${results.page + 1}|">Page 1</span>
+        <a th:if="${results.hasNext()}"
+           th:href="@{/admin/players(q=${q}, filter=${filter.param()}, page=${results.page + 1})}">Next →</a>
+    </nav>
 </main>
 
 </body>
