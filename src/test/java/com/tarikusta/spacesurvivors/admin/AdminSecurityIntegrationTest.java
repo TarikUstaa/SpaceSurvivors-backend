@@ -129,13 +129,15 @@ class AdminSecurityIntegrationTest {
     }
 
     @Test
-    @DisplayName("a signed-in visitor without the ADMIN role is refused")
-    void refusesTheWrongRole() throws Exception {
-        // Being authenticated is not the same as being allowed. Today every admin_user row
-        // carries ADMIN, so this is the test that keeps the rule real if a second role is
-        // ever added.
+    @DisplayName("a session for an account that is not in admin_user is ended, not believed")
+    void endsASessionWithNoAccountBehindIt() throws Exception {
+        // This test used to assert a 403 for a role the backoffice does not know. Since
+        // AdminSessionGuard, the session is checked against the table on every request, and a
+        // session naming nobody never reaches the role check at all: it is signed out. Being
+        // authenticated is still not the same as being allowed — AdminRolesIntegrationTest
+        // covers a real account with the wrong role.
         mvc.perform(get("/admin/players").with(user("someone").roles("PLAYER")))
-                .andExpect(status().isForbidden());
+                .andExpect(redirectedUrl("/admin/login?revoked"));
     }
 
     // ── the two chains do not bleed into each other ────────────────────────────────

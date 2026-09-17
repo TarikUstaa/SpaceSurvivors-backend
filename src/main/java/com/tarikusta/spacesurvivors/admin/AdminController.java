@@ -2,6 +2,7 @@ package com.tarikusta.spacesurvivors.admin;
 
 import com.tarikusta.spacesurvivors.auth.ClientAddress;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -10,8 +11,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -40,10 +43,13 @@ public class AdminController {
 
     private final AdminPlayerService players;
     private final AdminBoardService board;
+    private final AdminProgressService saves;
 
-    public AdminController(AdminPlayerService players, AdminBoardService board) {
+    public AdminController(AdminPlayerService players, AdminBoardService board,
+                           AdminProgressService saves) {
         this.players = players;
         this.board = board;
+        this.saves = saves;
     }
 
     /**
@@ -60,6 +66,26 @@ public class AdminController {
     @GetMapping
     public String home() {
         return "redirect:/admin/players";
+    }
+
+    /**
+     * Where a signed-in person lands when their role does not cover what they asked for.
+     *
+     * <p>A real page with a real 403, reached by a redirect from both refusal paths —
+     * {@code AdminSecurityConfig.StaleFormHandler} for the URL rules, {@code AdminErrorHandler}
+     * for {@code @PreAuthorize}. {@code @ResponseStatus} sets the status on an ordinary render,
+     * which is the difference from {@code sendError}: no error dispatch, so the API chain never
+     * gets a say in what this looks like.</p>
+     */
+    @GetMapping("/forbidden")
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public String forbidden(Model model, Authentication authentication) {
+        model.addAttribute("title", "Not allowed");
+        model.addAttribute("detail",
+                "Your account's role does not include that page or action. "
+                + "An administrator can change the role from the Users page.");
+        model.addAttribute("admin", authentication.getName());
+        return "admin/error";
     }
 
     @GetMapping("/players")
@@ -86,6 +112,72 @@ public class AdminController {
         model.addAttribute("scores", board.scoresOf(playerId));
         model.addAttribute("admin", authentication.getName());
         return "admin/player";
+    }
+
+    /**
+     * The save editor. A player who has never saved has nothing to edit, and is sent back to their
+     * page with a sentence rather than shown an empty form that would create a save out of nothing.
+     */
+    @GetMapping("/players/{playerId}/edit")
+    public String editSave(@PathVariable UUID playerId, Model model,
+                           RedirectAttributes redirect, Authentication authentication) {
+        return saves.form(playerId)
+                .map(form -> {
+                    model.addAttribute("form", form);
+                    model.addAttribute("admin", authentication.getName());
+                    return "admin/player-edit";
+                })
+                .orElseGet(() -> {
+                    redirect.addFlashAttribute("warning",
+                            "This player has no cloud save yet, so there is nothing to edit.");
+                    return "redirect:/admin/players/" + playerId;
+                });
+    }
+
+    /**
+     * Apply an edit. The whole form arrives as a map because the service owns the list of fields
+     * and their rules; binding it to a Java type here would be a second list to keep in step.
+     *
+     * <p>A refused edit returns to the form — freshly drawn from the database, so a STALE refusal
+     * shows the save as it is now — and a saved one to the player's page.</p>
+     */
+    @PostMapping("/players/{playerId}/edit")
+    public String saveEdit(@PathVariable UUID playerId,
+                           @RequestParam Map<String, String> form,
+                           RedirectAttributes redirect,
+                           Authentication authentication,
+                           HttpServletRequest request) {
+
+        AdminProgressService.Result result = saves.edit(
+                authentication.getName(), playerId, form, ClientAddress.of(request));
+
+        return switch (result.outcome()) {
+            case SAVED -> {
+                redirect.addFlashAttribute("message", "Save updated: "
+                        + String.join(", ", result.changes())
+                        + ". The game takes this copy over its own on its next sync.");
+                yield "redirect:/admin/players/" + playerId;
+            }
+            case UNCHANGED -> {
+                redirect.addFlashAttribute("warning", "Nothing changed, so nothing was written.");
+                yield "redirect:/admin/players/" + playerId;
+            }
+            case NO_SAVE -> {
+                redirect.addFlashAttribute("warning",
+                        "This player has no cloud save yet, so there is nothing to edit.");
+                yield "redirect:/admin/players/" + playerId;
+            }
+            case STALE -> {
+                redirect.addFlashAttribute("warning", "The game saved this player while the form "
+                        + "was open. Nothing was written — the form below shows the save as it is "
+                        + "now; make the change again.");
+                yield "redirect:/admin/players/" + playerId + "/edit";
+            }
+            case INVALID -> {
+                redirect.addFlashAttribute("warning", "Nothing was written. " + result.problem());
+                yield "redirect:/admin/players/" + playerId + "/edit";
+            }
+        };
     }
 
     /**

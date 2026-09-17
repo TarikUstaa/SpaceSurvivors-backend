@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="|Edit ${form.displayName} · SpaceSurvivors backoffice|">Edit save</title>
+    <link rel="stylesheet" th:href="@{/admin/assets/admin.css}">
+</head>
+<body>
+
+<header th:replace="~{admin/fragments :: topbar('players', ${admin})}"></header>
+
+<main>
+    <p class="crumb"><a th:href="@{'/admin/players/' + ${form.playerId}}">← Back to the player</a></p>
+
+    <h1>Edit save — <span th:text="${form.displayName}">name</span></h1>
+    <p class="subtitle">
+        Save version <span th:text="${form.version}">1</span>,
+        admin revision <span th:text="${form.adminRevision}">0</span>.
+    </p>
+
+    <div th:replace="~{admin/fragments :: flash}"></div>
+
+    <p class="notice info">
+        Saving replaces the copy on the player's device on its next sync — including anything they
+        did since their last one. Lowering a number or removing an id works too: the game takes this
+        copy whole rather than merging it. Every change is written to the audit trail with its old
+        value.
+    </p>
+
+    <form th:action="@{'/admin/players/' + ${form.playerId} + '/edit'}" method="post">
+        <!--
+          The version the form was drawn from. If the game saves in the meantime the edit is
+          refused instead of silently overwriting what it wrote.
+        -->
+        <input type="hidden" name="version" th:value="${form.version}">
+
+        <section class="panel">
+            <h2>Numbers</h2>
+            <div class="grid-fields">
+                <div class="field" th:each="c : ${form.counters}">
+                    <label th:for="${c.key}" th:text="${c.key}">wallet</label>
+                    <input type="text" inputmode="numeric" pattern="[0-9]+" required
+                           th:id="${c.key}" th:name="${c.key}" th:value="${c.value}">
+                </div>
+            </div>
+            <p class="muted small">
+                The wallet is what the player can spend; lifetime scrap is what they have ever
+                earned and never goes down in play.
+            </p>
+        </section>
+
+        <section class="panel">
+            <h2>Unlocks</h2>
+            <div class="grid-fields">
+                <div class="field">
+                    <label for="unlockedAchievementIds">Achievements</label>
+                    <textarea id="unlockedAchievementIds" name="unlockedAchievementIds" rows="8"
+                              th:text="${form.unlockedAchievementIds}"></textarea>
+                    <span class="hint">One id per line, e.g. first_blood</span>
+                </div>
+                <div class="field">
+                    <label for="ownedShipIds">Owned ships</label>
+                    <textarea id="ownedShipIds" name="ownedShipIds" rows="8"
+                              th:text="${form.ownedShipIds}"></textarea>
+                    <span class="hint">One id per line, e.g. starter</span>
+                </div>
+                <div class="field">
+                    <label for="metaUpgradeLevels">Upgrade levels</label>
+                    <textarea id="metaUpgradeLevels" name="metaUpgradeLevels" rows="8"
+                              th:text="${form.metaUpgradeLevels}"></textarea>
+                    <span class="hint">One id=level per line, e.g. damage=3</span>
+                </div>
+            </div>
+            <div class="field">
+                <label for="selectedShipId">Selected ship</label>
+                <input type="text" id="selectedShipId" name="selectedShipId" th:value="${form.selectedShipId}">
+                <span class="hint">Must be one of the owned ships, or empty.</span>
+            </div>
+            <p class="muted small">
+                Ids are only checked for shape, not against the game's catalogue — the server does
+                not have it. Copy them from an existing save to avoid typos.
+            </p>
+        </section>
+
+        <button type="submit" class="primary compact">Save changes</button>
+    </form>
+</main>
+
+</body>
+</html>

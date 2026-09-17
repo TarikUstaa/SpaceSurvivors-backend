@@ -20,8 +20,11 @@ import java.util.UUID;
 @Service
 public class ProgressService {
 
-    /** A real save is a few hundred bytes; anything this large is a bug or abuse. */
-    private static final int MAX_PROGRESS_BYTES = 64 * 1024;
+    /**
+     * A real save is a few hundred bytes; anything this large is a bug or abuse. Public because
+     * the backoffice's save editor writes the same column and must hold to the same ceiling.
+     */
+    public static final int MAX_PROGRESS_BYTES = 64 * 1024;
 
     private final PlayerProgressRepository progress;
     private final ObjectMapper json;

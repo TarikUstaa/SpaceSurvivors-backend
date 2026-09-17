@@ -920,6 +920,75 @@ service serving normally), then `INFO … GeoIP database loaded from
 /app/geoip/dbip-country-lite.mmdb` from the DB-IP build. A sign-in from Tarik's machine wrote
 `TR`, and it reads back on both the Unity profile screen and the backoffice player list.
 
+### D32 — two roles, checked at the URL and at the operation, and a session that is not believed (2026-09-17)
+
+Mentor's advice, in Tarik's words: a second backoffice user with restricted permissions, "normal bir
+şirket düzeni gibi". Two roles, `ADMIN` and `SUPPORT` (V5 constrains the column to exactly those).
+SUPPORT does the day-to-day work — players, leaderboard, **editing a save**, removing a score.
+ADMIN additionally owns the three things whose mistakes cost the most: **deleting a player**, **the
+audit trail**, and **the Users page** (who may sign in, and as what).
+
+**Two checks for one rule, on purpose.** `AdminSecurityConfig` refuses by URL; `@PreAuthorize` on
+`AdminPlayerService.delete` and on all of `AdminUserService` refuses at the operation
+(`@EnableMethodSecurity`). This is D29's argument again: a rule attached to a URL only protects
+requests shaped like that URL. The test that proves the second check calls the service directly
+with a SUPPORT principal and no HTTP request at all.
+
+**A trap found while wiring it:** `ApiExceptionHandler` catches `Exception`, so a `@PreAuthorize`
+refusal thrown inside an admin controller came out as a 500 with a JSON body. `AdminErrorHandler`
+now handles `AccessDeniedException` first. And the URL rules' own refusal used the default
+`sendError(403)`, which in the deployed service is the same error-dispatch trap D27 describes for
+CSRF — a blank 401 from the API chain. Both now redirect to `/admin/forbidden`, an ordinary page that
+sets 403 itself.
+
+**The session is re-checked against `admin_user` on every request** (`AdminSessionGuard`, before
+`AuthorizationFilter`). Spring Security reads the row once, at sign-in, and believes the session
+afterwards — so a disabled account kept working, and a demoted ADMIN kept ADMIN, until the session
+expired. Now: account gone or disabled, or role in the row ≠ role in the session → signed out on the
+next click. One primary-key lookup per page, deliberately uncached. This also closes the old open
+item "ending other sessions", for disable and role change (not yet for a password change).
+
+**Nobody chooses a password for somebody else.** Creating an account, or resetting one, generates a
+16-character temporary password (no `0 O 1 l I`), shows it once via a flash attribute, and sets
+`must_change_password`; the guard then sends every page to `/admin/password` until the owner picks
+their own. **Nobody acts on their own account on the Users page** — not role, enabled or password —
+which is what guarantees the backoffice cannot lock itself out: every change there is made by an
+enabled ADMIN to someone else. No delete; disabling is the revocation (V3's reasoning).
+
+Six new audit actions: `PROGRESS_EDITED`, `ACCOUNT_CREATED`, `ACCOUNT_ROLE_CHANGED`,
+`ACCOUNT_DISABLED`, `ACCOUNT_ENABLED`, `ACCOUNT_PASSWORD_RESET`.
+
+### D33 — the backoffice may edit a save, and the game obeys it (2026-09-17)
+
+Also the mentor's: editing a player from the backoffice, to make testing cheap.
+
+**Why an UPDATE alone would not have worked.** The game reconciles with `ProfileMerge`, whose rule
+is *never lose progress* — counters take the higher value, achievements union, and the wallet comes
+from the side with more lifetime scrap. Every one of those undoes a manual edit on the next sync:
+a lowered best is raised back, a removed achievement re-added, and a raised wallet (lifetime scrap
+unchanged → a tie → local wins) overwritten with the old balance. Checked in the client code before
+building anything; it is why this took a client change and not only a server one.
+
+**`adminRevision`** — a number inside the save that only the server raises, once per edit. The
+client (schema 5 → 6) compares it before any merge rule: a remote copy with a higher revision is
+taken whole. Raising `version` (which the write does) is what makes the device *notice* — its next
+PUT gets a 409 carrying the edited copy — and the revision is what makes it *obey*. The integration
+test drives exactly that: a real device token saves, the operator edits, the device's stale PUT gets
+a 409 whose body has the new wallet and `adminRevision: 1`. The price is anything the player did
+locally since their last sync, which is the correct price for an operator's deliberate correction.
+
+**D1, broken narrowly.** The server still never interprets the save — except in
+`AdminProgressService`, which reads and writes only the fields it names (eight counters,
+achievements, ships, upgrade levels, selected ship) and leaves every other property as it found it;
+a test puts an unknown `someFutureField` in and checks it survives. Ids are validated for shape
+(`[a-z0-9_]`), not against the game's catalogue, which the server does not have.
+
+**Refusals write nothing.** The form carries the version it was drawn from (the game may save while
+it is open → refused, redrawn); one bad field refuses the whole form; an unchanged form writes
+nothing and does **not** raise the revision (raising it would make the device discard local progress
+for no edit). The audit row lists every changed field with its old value, because the save itself
+keeps only the new one.
+
 ## Open / next
 
 *Priority order.*
@@ -952,9 +1021,10 @@ service serving normally), then `INFO … GeoIP database loaded from
    new phone", which is the honest gap in device-based identity. `player_id` stays stable,
    so still cheap to add. `docs/firebase-setup.md` (from the scrapped repo) needs rewriting.
 7. ~~**Backoffice**~~ — **live 2026-09-11**, five screens. See the section above. ~~A real audit
-   table instead of log lines~~ — **done the same day** (D28). Still open within it: search and
-   pagination once the player list outgrows a screen, ending other sessions when a password
-   changes (`SessionRegistry`), and a second administrator account.
+   table instead of log lines~~ — **done the same day** (D28). ~~A second administrator account~~
+   — **roles, accounts and save editing done 2026-09-17** (D32, D33). Still open within it: search
+   and pagination once the player list outgrows a screen, and ending *other* sessions of the same
+   account when its password changes (disable and role change already end them).
 
 ## Local run
 

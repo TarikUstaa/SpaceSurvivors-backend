@@ -90,6 +90,9 @@ public class AdminAccountService {
         }
 
         admin.setPasswordHash(passwordEncoder.encode(next));
+        // The owner has now chosen their own, so a temporary one somebody else saw is gone and
+        // AdminSessionGuard stops sending every page to this form.
+        admin.setMustChangePassword(false);
         admins.save(admin);
 
         // Audited here rather than in the controller, and inside this transaction, so the new

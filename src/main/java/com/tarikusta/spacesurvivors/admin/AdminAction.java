@@ -32,5 +32,29 @@ public enum AdminAction {
     PLAYER_DELETED,
 
     /** One leaderboard row was removed. The player kept everything else. */
-    SCORE_REMOVED
+    SCORE_REMOVED,
+
+    /**
+     * A player's cloud save was edited by hand. The summary lists every field that changed, old
+     * value and new — the save itself is overwritten, so this row is the only place the previous
+     * numbers survive.
+     */
+    PROGRESS_EDITED,
+
+    /** A backoffice account was created, with a temporary password its owner must replace. */
+    ACCOUNT_CREATED,
+
+    /** A backoffice account's role changed. Takes effect on that account's next request. */
+    ACCOUNT_ROLE_CHANGED,
+
+    /** A backoffice account was disabled — signed out on its next request — or re-enabled. */
+    ACCOUNT_DISABLED,
+    ACCOUNT_ENABLED,
+
+    /**
+     * Somebody else's password was replaced with a temporary one. Distinct from
+     * {@link #PASSWORD_CHANGED}, which is an account changing its <em>own</em> password: this one
+     * is the event that briefly lets one person sign in as another, and deserves its own name.
+     */
+    ACCOUNT_PASSWORD_RESET
 }

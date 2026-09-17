@@ -304,3 +304,57 @@ button.primary:hover { filter: brightness(1.08); }
 .notice.info  { background: var(--ground); color: var(--ink-soft); border: 1px solid var(--rule); }
 .notice.ok    { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
 .notice.warn  { background: var(--bad-soft); color: var(--bad); }
+
+/* ── roles, accounts and the save editor (2026-09-17) ───────────────────────────────── */
+
+/* A link that reads as a button: "Edit save" is an action, not a place. */
+a.button {
+    display: inline-block;
+    font-size: 0.87rem;
+    padding: 0.4rem 0.8rem;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    text-decoration: none;
+}
+a.button:hover { background: var(--accent); color: var(--surface); }
+
+.field textarea,
+.field select {
+    font: inherit;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--ground);
+    color: var(--ink);
+}
+.field textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; min-height: 6rem; }
+.field textarea:focus-visible,
+.field select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Numbers side by side; stacks to one column on a phone. */
+.grid-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0 1rem; }
+
+/* Buttons inside a table row or next to a field, which must not stretch like the sign-in one. */
+button.primary.compact { width: auto; padding: 0.45rem 1rem; }
+button.small {
+    font: inherit;
+    font-size: 0.8rem;
+    padding: 0.25rem 0.55rem;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--ink);
+    cursor: pointer;
+}
+button.small:hover { border-color: var(--accent); }
+td.actions { white-space: nowrap; }
+td.actions form + form { margin-left: 0.3rem; }
+td.actions select { font: inherit; font-size: 0.8rem; padding: 0.2rem; }
+
+.pill.ADMIN   { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.pill.SUPPORT { background: var(--ground); color: var(--ink-soft); border: 1px solid var(--rule); }
+.pill.off     { background: var(--bad-soft); color: var(--bad); }
+
+/* The one-time temporary password. Selectable in one click, impossible to miss. */
+.issued { border: 2px solid var(--accent); }
+.issued code { font-size: 1.15rem; user-select: all; letter-spacing: 0.04em; }

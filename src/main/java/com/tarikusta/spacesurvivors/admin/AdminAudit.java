@@ -113,6 +113,39 @@ public class AdminAudit {
         write(actor, AdminAction.PASSWORD_CHANGED, actor, "changed their own password", callerIp);
     }
 
+    /**
+     * @param changes one entry per field, already worded ({@code "wallet 120 → 5000"}). The
+     *                caller builds them because only the caller knows the before and after; this
+     *                method only decides how a list of them reads.
+     */
+    public void progressEdited(String actor, UUID playerId, String displayName,
+                               List<String> changes, String callerIp) {
+        write(actor, AdminAction.PROGRESS_EDITED, String.valueOf(playerId),
+                "edited the save of '" + displayName + "': " + String.join(", ", changes),
+                callerIp);
+    }
+
+    public void accountCreated(String actor, String username, AdminRole role, String callerIp) {
+        write(actor, AdminAction.ACCOUNT_CREATED, username,
+                "created " + role.name() + " account '" + username + "'", callerIp);
+    }
+
+    public void accountRoleChanged(String actor, String username, String from, AdminRole to,
+                                   String callerIp) {
+        write(actor, AdminAction.ACCOUNT_ROLE_CHANGED, username,
+                "changed '" + username + "' from " + from + " to " + to.name(), callerIp);
+    }
+
+    public void accountEnabled(String actor, String username, boolean enabled, String callerIp) {
+        write(actor, enabled ? AdminAction.ACCOUNT_ENABLED : AdminAction.ACCOUNT_DISABLED,
+                username, (enabled ? "re-enabled '" : "disabled '") + username + "'", callerIp);
+    }
+
+    public void accountPasswordReset(String actor, String username, String callerIp) {
+        write(actor, AdminAction.ACCOUNT_PASSWORD_RESET, username,
+                "reset the password of '" + username + "' to a temporary one", callerIp);
+    }
+
     // ── the sign-in ones: never allowed to break the sign-in itself ────────────────────
 
     public void signedIn(String actor, String callerIp) {

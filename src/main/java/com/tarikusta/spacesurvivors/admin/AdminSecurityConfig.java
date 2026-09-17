@@ -9,13 +9,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
-import org.springframework.security.web.access.AccessDeniedHandlerImpl;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler;
 import org.springframework.security.web.csrf.CsrfException;
@@ -49,8 +51,22 @@ import java.time.Instant;
  * CSRF token is what tells a request the administrator meant to send from one they were
  * tricked into sending. Turning it off here would mean any page they visit while signed in
  * could act as them.</p>
+ *
+ * <h2>Two roles, checked twice</h2>
+ *
+ * <p>The URL rules below are the first check: they are what stops a SUPPORT account from even
+ * reaching the users page. {@code @EnableMethodSecurity} switches on the second — the
+ * {@code @PreAuthorize} on the service methods that do the damage ({@code AdminPlayerService.delete},
+ * everything in {@code AdminUserService}). Two checks for one rule is deliberate, and it is D29's
+ * argument again: <b>a rule attached to a URL only protects requests shaped like that URL.</b>
+ * A second screen that calls the same service, or a URL pattern that stops matching after a
+ * rename, would walk straight past the first check. The annotation travels with the operation.</p>
+ *
+ * <p>{@code @EnableMethodSecurity} is application-wide, which sounds larger than it is: it only
+ * acts on methods that carry an annotation, and the only ones that do are in this package.</p>
  */
 @Configuration
+@EnableMethodSecurity
 public class AdminSecurityConfig {
 
     private static final Logger log = LoggerFactory.getLogger(AdminSecurityConfig.class);
@@ -64,14 +80,25 @@ public class AdminSecurityConfig {
     @Order(1)
     public SecurityFilterChain admin(HttpSecurity http,
                                      AdminLoginRecorder loginRecorder,
-                                     AdminLoginFailureRecorder failureRecorder) throws Exception {
+                                     AdminLoginFailureRecorder failureRecorder,
+                                     AdminUserRepository admins) throws Exception {
         return http
                 .securityMatcher("/admin/**")
                 .authorizeHttpRequests(auth -> auth
                         // The login page and the stylesheet it needs, or signing in would
                         // require being signed in.
                         .requestMatchers("/admin/login", "/admin/assets/**").permitAll()
-                        .anyRequest().hasRole("ADMIN"))
+                        // ADMIN only: who may sign in, what everybody did, and the one action
+                        // with no undo. "/**" also matches the bare path, so /admin/users itself
+                        // is covered and not only what lies beneath it.
+                        .requestMatchers("/admin/users/**", "/admin/audit/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/admin/players/*/delete").hasRole("ADMIN")
+                        // Everything else is the day-to-day work, and both roles do it. Listed
+                        // by name rather than as authenticated(): an account whose role this
+                        // application does not know gets nothing, not everything.
+                        .anyRequest().hasAnyRole("ADMIN", "SUPPORT"))
+                // Before the URL rules read the session's role, not after — see the class.
+                .addFilterBefore(new AdminSessionGuard(admins), AuthorizationFilter.class)
                 .formLogin(form -> form
                         .loginPage("/admin/login")
                         .loginProcessingUrl("/admin/login")
@@ -132,17 +159,22 @@ public class AdminSecurityConfig {
      * A stale token then means what it actually means — sign in again — and the request is
      * still refused, which was never in question.</p>
      *
-     * <p><b>Only CSRF failures are redirected.</b> Everything else keeps the default 403: a
-     * signed-in person without the ADMIN role has not gone stale, they are simply not allowed,
-     * and sending them to a login page would invite them to try the same credentials again.</p>
+     * <p><b>A refusal that is not about CSRF goes to its own page, not the login page.</b> A
+     * signed-in SUPPORT account that reaches an ADMIN page has not gone stale — they are simply
+     * not allowed, and a login page would invite them to try the same credentials again.</p>
+     *
+     * <p>It used to be the default handler's bare 403 here, which was fine while no signed-in
+     * person could ever be refused. Now one can, and the default is the same trap as the CSRF
+     * case: {@code sendError(403)} triggers the container's error dispatch to {@code /error},
+     * which the API chain answers — in the deployed service a SUPPORT user typing
+     * {@code /admin/audit} would have met a blank 401. {@code /admin/forbidden} is an ordinary
+     * page that sets 403 itself, so no error dispatch happens at all.</p>
      *
      * <p>Worth knowing that MockMvc does not perform the error dispatch, so in tests the
      * original behaviour appeared as a clean 403 and only the deployed service showed the 401.
-     * The test for this asserts the redirect, which both environments agree on.</p>
+     * The tests assert the redirects, which both environments agree on.</p>
      */
     static class StaleFormHandler implements AccessDeniedHandler {
-
-        private final AccessDeniedHandler forbidden = new AccessDeniedHandlerImpl();
 
         @Override
         public void handle(HttpServletRequest request, HttpServletResponse response,
@@ -151,7 +183,7 @@ public class AdminSecurityConfig {
                 response.sendRedirect(request.getContextPath() + "/admin/login?expired");
                 return;
             }
-            forbidden.handle(request, response, denied);
+            response.sendRedirect(request.getContextPath() + "/admin/forbidden");
         }
     }
 

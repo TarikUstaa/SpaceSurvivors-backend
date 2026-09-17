@@ -96,7 +96,7 @@ public class AdminBootstrap implements ApplicationRunner {
         }
 
         // The plaintext goes straight into the encoder and is never held, logged or returned.
-        admins.save(new AdminUser(username, passwordEncoder.encode(password), "ADMIN"));
+        admins.save(new AdminUser(username, passwordEncoder.encode(password), AdminRole.ADMIN));
         log.info("Created the first administrator '{}'. These settings do nothing from now on, "
                  + "so the variables can be removed once the sign-in is confirmed.", username);
     }

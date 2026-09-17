@@ -35,11 +35,24 @@ public class AdminUser {
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
+    /**
+     * Stored as the bare name ({@code ADMIN}, {@code SUPPORT}); V5 constrains the column to that
+     * list. A {@code String} field rather than {@code @Enumerated}, so that reading a row can
+     * never fail on a value the enum lacks — the CHECK already guarantees there is none, and an
+     * account that throws while loading is an account that cannot sign in to fix itself.
+     */
     @Column(nullable = false)
     private String role;
 
     @Column(nullable = false)
     private boolean enabled;
+
+    /**
+     * Set when somebody other than the owner chose the current password — account creation and
+     * password resets. Cleared only by the owner choosing their own. See V5__admin_roles.sql.
+     */
+    @Column(name = "must_change_password", nullable = false)
+    private boolean mustChangePassword;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
@@ -56,10 +69,10 @@ public class AdminUser {
         // JPA needs a no-arg constructor.
     }
 
-    public AdminUser(String username, String passwordHash, String role) {
+    public AdminUser(String username, String passwordHash, AdminRole role) {
         this.username = username;
         this.passwordHash = passwordHash;
-        this.role = role;
+        this.role = role.name();
         this.enabled = true;
     }
 
@@ -106,8 +119,25 @@ public class AdminUser {
         return role;
     }
 
+    /** Takes the enum, never a string, so no code path can write a role V5 would refuse. */
+    public void setRole(AdminRole role) {
+        this.role = role.name();
+    }
+
     public boolean isEnabled() {
         return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    public boolean isMustChangePassword() {
+        return mustChangePassword;
+    }
+
+    public void setMustChangePassword(boolean mustChangePassword) {
+        this.mustChangePassword = mustChangePassword;
     }
 
     public Instant getCreatedAt() {

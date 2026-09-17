@@ -867,6 +867,11 @@ Arayüz, **gerçekten birden fazla implementasyon olduğunda** açılır: Unity 
 11. **Zor:** `AdminAuditEntry.action` alanındaki `EnumType.STRING`'i `ORDINAL` yapsan bugün
     hiçbir test kırılmaz. Peki `AdminAction` enum'una ortadan bir sabit eklediğin gün
     veritabanında ne olur?
+12. **Orta:** `AdminSessionGuard`'ı `AuthorizationFilter`'dan *sonraya* taşısan, ADMIN'likten
+    SUPPORT'a düşürülmüş biri `/admin/users`'ı açabilir mi? Hangi test bunu yakalar?
+13. **Zor:** Backoffice'ten bir oyuncunun cüzdanını artırdın ama `adminRevision` diye bir şey
+    olmasaydı. Oyuncunun cihazı bir sonraki senkronda ne yapardı? `ProfileMerge`'teki hangi
+    kural edit'i geri alırdı? (İpucu: `lifetimeScrap` değişmedi.)
 
 ---
 
@@ -874,9 +879,12 @@ Arayüz, **gerçekten birden fazla implementasyon olduğunda** açılır: Unity 
 
 - **JPA ilişkileri** (`@OneToMany`, `@ManyToOne`) — bu projede hiç ihtiyaç olmadı, ama
   gerçek bir nesne grafiğinde işin merkezi orası
-- **Spring Security'nin derinliği** — artık iki `SecurityFilterChain` var (API için JWT,
-  `/admin/**` için form login + session + CSRF) ve tek bir `hasRole("ADMIN")` kuralı;
-  method security (`@PreAuthorize`) ve OAuth2 akışları hâlâ hiç kullanılmadı
+- **Spring Security'nin derinliği** — iki `SecurityFilterChain` var (API için JWT, `/admin/**`
+  için form login + session + CSRF). 2026-09-17'den beri iki rol (`ADMIN`, `SUPPORT`) ve
+  **method security** de kullanılıyor: aynı kural hem URL'de (`AdminSecurityConfig`) hem
+  işlemin kendisinde (`@PreAuthorize`, `AdminUserService`) duruyor — neden ikisi birden,
+  Memory_bank D32'de. Kendi filtreni zincire eklemenin örneği de orada: `AdminSessionGuard`,
+  `AuthorizationFilter`'dan *önce* çalışmak zorunda. OAuth2 akışları hâlâ kullanılmadı.
 - **Profiller** — `application-local.properties` ve `application-test.properties` zaten
   kullanılıyor, prod'da genişleyecek
 - **Observability** — Actuator açık ama metrik toplanmıyor. Rate limiter'ın "kaç kez

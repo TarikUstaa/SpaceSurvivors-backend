@@ -41,7 +41,7 @@ class AdminAccountServiceTest {
 
     @BeforeEach
     void existingAdmin() {
-        admin = new AdminUser(NAME, encoder.encode(CURRENT), "ADMIN");
+        admin = new AdminUser(NAME, encoder.encode(CURRENT), AdminRole.ADMIN);
         when(admins.findByUsernameIgnoreCase(anyString())).thenReturn(Optional.empty());
         when(admins.findByUsernameIgnoreCase(NAME)).thenReturn(Optional.of(admin));
     }

@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.ControllerAdvice;
@@ -60,6 +61,24 @@ public class AdminErrorHandler {
         log.debug("unparseable value for '{}' in a backoffice path", e.getName());
         return page(model, authentication, "Not found",
                 "That address does not point at anything.");
+    }
+
+    /**
+     * A {@code @PreAuthorize} on a service method refused the caller.
+     *
+     * <p>The URL rules in {@link AdminSecurityConfig} normally refuse first, and their refusal
+     * never reaches this class. This one is thrown from <em>inside</em> a controller, which means
+     * Spring MVC sees it before Spring Security does — and {@code ApiExceptionHandler}'s
+     * catch-all for {@code Exception} would answer it with a 500 and a JSON body. A permission
+     * check that looks like a crash is the one thing it must not look like.</p>
+     *
+     * <p>Same destination as the URL rules' refusal, so both checks read the same to a person.</p>
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public String denied(AccessDeniedException e, Authentication authentication) {
+        log.info("backoffice action refused for '{}': {}",
+                authentication == null ? "(anonymous)" : authentication.getName(), e.getMessage());
+        return "redirect:/admin/forbidden";
     }
 
     private String page(Model model, Authentication authentication, String title, String detail) {

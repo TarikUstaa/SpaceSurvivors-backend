@@ -3,6 +3,7 @@ package com.tarikusta.spacesurvivors.admin;
 import com.tarikusta.spacesurvivors.exception.NotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -86,8 +87,12 @@ public class AdminPlayerService {
      * <p>{@code @Transactional} covers the delete and the audit entry together, so a failure to
      * record it takes the deletion with it. The save and the scores go by the {@code ON DELETE
      * CASCADE} on those foreign keys, not by JPA — see {@link AdminPlayerQueries#deletePlayer}.</p>
+     *
+     * <p>ADMIN only, and said here as well as on the URL. The URL rule stops the form; this
+     * stops the operation, whoever calls it.</p>
      */
     @Transactional
+    @PreAuthorize(AdminRole.IS_ADMIN)
     public Deletion delete(String actor, UUID playerId, String confirmName, String callerIp) {
         AdminPlayerDetail player = detail(playerId);
 

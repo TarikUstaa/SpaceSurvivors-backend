@@ -26,6 +26,14 @@
         <p class="notice warn" th:if="${param.throttled}">
             Too many sign-in attempts. Wait a minute and try again.
         </p>
+        <!--
+          AdminSessionGuard ended the session: the account was disabled, or its role changed.
+          Deliberately not saying which — the person may be signing in with a role they have not
+          seen yet, and the sign-in itself will tell them whether the account still works.
+        -->
+        <p class="notice info" th:if="${param.revoked}">
+            Your access changed, so you were signed out. Sign in again.
+        </p>
         <!-- The page had been sitting open long enough for its token to expire. -->
         <p class="notice info" th:if="${param.expired}">
             That form had gone stale. Sign in and try again.

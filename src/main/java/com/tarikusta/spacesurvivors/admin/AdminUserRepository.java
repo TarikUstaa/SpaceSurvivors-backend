@@ -2,6 +2,7 @@ package com.tarikusta.spacesurvivors.admin;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -14,4 +15,7 @@ public interface AdminUserRepository extends JpaRepository<AdminUser, UUID> {
      * from being created again, and the query would never find it.
      */
     Optional<AdminUser> findByUsernameIgnoreCase(String username);
+
+    /** The users page, oldest account first — the bootstrap administrator stays on top. */
+    List<AdminUser> findAllByOrderByCreatedAtAsc();
 }

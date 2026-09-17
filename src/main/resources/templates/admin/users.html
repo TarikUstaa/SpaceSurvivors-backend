@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Users · SpaceSurvivors backoffice</title>
+    <link rel="stylesheet" th:href="@{/admin/assets/admin.css}">
+</head>
+<body>
+
+<header th:replace="~{admin/fragments :: topbar('users', ${admin})}"></header>
+
+<main>
+    <h1>Users</h1>
+    <p class="subtitle">Who can sign in to the backoffice, and as what. Times in UTC.</p>
+
+    <div th:replace="~{admin/fragments :: flash}"></div>
+
+    <!--
+      A temporary password, shown on this one render and never again: it came through a flash
+      attribute, so refreshing the page loses it. The database holds only its hash.
+    -->
+    <section class="panel issued" th:if="${issued}">
+        <h2>Temporary password for <span th:text="${issued.username}">name</span></h2>
+        <p><code th:text="${issued.password}">xxxxxxxxxxxxxxxx</code></p>
+        <p class="muted small">
+            Shown once. Hand it over privately. It works for one sign-in, after which the account
+            has to choose its own password before it can open any page.
+        </p>
+    </section>
+
+    <section class="panel">
+        <h2>Accounts</h2>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Last sign-in</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="a : ${accounts}">
+                    <td class="name">
+                        <span th:text="${a.username}">name</span>
+                        <span class="muted small" th:if="${a.username.equalsIgnoreCase(admin)}">(you)</span>
+                    </td>
+                    <td><span class="pill" th:classappend="${a.role}" th:text="${a.role}">ADMIN</span></td>
+                    <td>
+                        <span class="pill off" th:unless="${a.enabled}">disabled</span>
+                        <span class="pill" th:if="${a.enabled and a.mustChangePassword}">password pending</span>
+                        <span class="muted" th:if="${a.enabled and !a.mustChangePassword}">active</span>
+                    </td>
+                    <td class="muted" th:text="${a.created}">—</td>
+                    <td class="muted" th:text="${a.lastSignIn}">—</td>
+                    <!--
+                      No actions on your own row. The service refuses them anyway; not drawing
+                      them says so before anybody tries.
+                    -->
+                    <td class="actions" th:unless="${a.username.equalsIgnoreCase(admin)}">
+                        <form th:action="@{'/admin/users/' + ${a.id} + '/role'}" method="post">
+                            <select name="role" th:attr="aria-label=|Role for ${a.username}|">
+                                <option th:each="r : ${roles}" th:value="${r.name()}"
+                                        th:text="${r.name()}" th:selected="${r.name() == a.role}">ROLE</option>
+                            </select>
+                            <button type="submit" class="small">Set role</button>
+                        </form>
+                        <form th:action="@{'/admin/users/' + ${a.id} + '/enabled'}" method="post">
+                            <input type="hidden" name="enabled" th:value="${!a.enabled}">
+                            <button type="submit" class="small" th:text="${a.enabled} ? 'Disable' : 'Enable'">Disable</button>
+                        </form>
+                        <form th:action="@{'/admin/users/' + ${a.id} + '/password'}" method="post">
+                            <button type="submit" class="small">Reset password</button>
+                        </form>
+                    </td>
+                    <td th:if="${a.username.equalsIgnoreCase(admin)}"></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="muted small">
+            There is no delete. Disabling signs the account out on its next click and keeps its
+            name meaningful in the audit trail.
+        </p>
+    </section>
+
+    <section class="panel">
+        <h2>New account</h2>
+        <form th:action="@{/admin/users}" method="post">
+            <div class="grid-fields">
+                <div class="field">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" autocomplete="off"
+                           minlength="3" maxlength="32" pattern="[A-Za-z0-9._\-]+" required>
+                    <span class="hint">3–32 characters: letters, digits, . _ -</span>
+                </div>
+                <div class="field">
+                    <label for="role">Role</label>
+                    <select id="role" name="role">
+                        <option th:each="r : ${roles}" th:value="${r.name()}" th:text="${r.name()}"
+                                th:selected="${r.name() == 'SUPPORT'}">SUPPORT</option>
+                    </select>
+                </div>
+            </div>
+            <ul class="muted small">
+                <li th:each="r : ${roles}"><strong th:text="${r.name()}">ROLE</strong> — <span th:text="${r.summary()}">what it can do</span></li>
+            </ul>
+            <p class="muted small">
+                A temporary password is generated for the account — nobody types one for somebody
+                else.
+            </p>
+            <button type="submit" class="primary compact">Create account</button>
+        </form>
+    </section>
+</main>
+
+</body>
+</html>

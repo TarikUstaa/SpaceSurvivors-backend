@@ -47,10 +47,10 @@
                 <div><dt>Last written</dt><dd th:text="${player.savedOn()}">—</dd></div>
                 <div><dt>Size</dt><dd th:text="${player.saveSize()}">—</dd></div>
             </dl>
+            <p><a class="button" th:href="@{'/admin/players/' + ${player.playerId} + '/edit'}">Edit save</a></p>
             <!--
-              Shown exactly as stored. The server has never interpreted this object — the game
-              owns its shape — so unpacking it into named fields here would invent a second
-              opinion about it that goes stale the first time the client adds one.
+              Shown exactly as stored. Only the editor opens it, and only for the fields it names
+              — see AdminProgressService for why that one exception exists.
             -->
             <details>
                 <summary>Raw save data</summary>
@@ -92,7 +92,8 @@
         </p>
     </section>
 
-    <section class="panel danger-zone">
+    <!-- ADMIN only. SUPPORT would be refused anyway; there is no point offering the button. -->
+    <section class="panel danger-zone" th:if="${isAdmin}">
         <h2>Delete this player</h2>
         <p class="muted">
             Removes the account, the cloud save and both scores. There is no undo, and the
