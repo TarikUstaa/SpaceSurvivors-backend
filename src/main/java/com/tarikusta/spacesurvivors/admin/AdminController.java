@@ -83,7 +83,7 @@ public class AdminController {
         model.addAttribute("title", "Not allowed");
         model.addAttribute("detail",
                 "Your account's role does not include that page or action. "
-                + "An administrator can change the role from the Users page.");
+                + "An administrator can change the role from the Team page.");
         model.addAttribute("admin", authentication.getName());
         return "admin/error";
     }

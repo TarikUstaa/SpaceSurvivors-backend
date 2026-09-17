@@ -29,11 +29,15 @@
         -->
         <a th:if="${isAdmin}" th:href="@{/admin/audit}"
            th:classappend="${active == 'audit'} ? 'active'">Audit</a>
-        <a th:if="${isAdmin}" th:href="@{/admin/users}"
-           th:classappend="${active == 'users'} ? 'active'">Users</a>
         <a th:if="${isAdmin}" th:href="@{/admin/game}"
            th:classappend="${active == 'game'} ? 'active'">Game</a>
     </nav>
+    <!--
+      Team sits on the right, with the account links, rather than among the pages about the game:
+      it is about who runs the backoffice, not about players. ADMIN only, like the page itself.
+    -->
+    <a class="who" th:if="${isAdmin}" th:href="@{/admin/users}"
+       th:classappend="${active == 'users'} ? 'active'">Team</a>
     <!-- The signed-in name is also the way to the account page; there is only one thing on it. -->
     <a class="who" th:href="@{/admin/password}" th:text="${admin}"
        th:classappend="${active == 'password'} ? 'active'">admin</a>
