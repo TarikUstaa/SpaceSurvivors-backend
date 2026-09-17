@@ -47,6 +47,40 @@
             <button type="submit" class="primary compact">Publish</button>
         </form>
     </section>
+
+    <section class="panel">
+        <h2>Game settings</h2>
+        <p class="muted small">
+            Leave a field empty to use the game's own value. Every value has hard limits; one value out
+            of range saves nothing. A run already in progress keeps the values it started with.
+        </p>
+        <form th:action="@{/admin/game/config}" method="post">
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                    <tr><th>Setting</th><th>Game default</th><th>Override</th><th>Allowed</th></tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="t : ${tunables}">
+                        <td class="text">
+                            <strong th:text="${t.label()}">Curse chance</strong>
+                            <div class="muted small" th:text="${t.description()}">what it does</div>
+                            <div class="mono muted small" th:text="${t.key()}">curseChance</div>
+                        </td>
+                        <td class="num muted" th:text="${t.gameDefault()}">0.25</td>
+                        <td>
+                            <input type="text" inputmode="decimal" class="override"
+                                   th:name="${t.key()}" th:value="${overrides[t.key()]}"
+                                   th:attr="aria-label=|Override for ${t.label()}|" placeholder="default">
+                        </td>
+                        <td class="muted small" th:text="|${t.min()} – ${t.max()}${t.whole() ? ', whole' : ''}|">0 – 1</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <button type="submit" class="primary compact">Save settings</button>
+        </form>
+    </section>
 </main>
 
 </body>

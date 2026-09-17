@@ -52,6 +52,9 @@ public enum AdminAction {
     /** The main-menu announcement was taken down. */
     ANNOUNCEMENT_CLEARED,
 
+    /** Remote game settings changed. Every change, old value and new, is in the summary. */
+    GAME_CONFIG_CHANGED,
+
     /** A player was suspended: refused sign-in and hidden from the board. The reason is in the summary. */
     PLAYER_SUSPENDED,
 

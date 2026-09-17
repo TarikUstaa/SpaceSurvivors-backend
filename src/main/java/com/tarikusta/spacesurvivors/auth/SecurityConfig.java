@@ -40,6 +40,7 @@ public class SecurityConfig {
             "/actuator/**",
             "/v1/auth/token",   // where a token is obtained; requiring one here is a circle
             "/v1/announcement", // most needed exactly when signing in is broken; names no player
+            "/v1/config",       // the game's remote tuning; describes the game, not a player
     };
 
     /**

@@ -2,6 +2,7 @@ package com.tarikusta.spacesurvivors.admin;
 
 import com.tarikusta.spacesurvivors.game.Announcement;
 import com.tarikusta.spacesurvivors.game.GameContentService;
+import com.tarikusta.spacesurvivors.game.GameTunable;
 import com.tarikusta.spacesurvivors.settings.AppSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,11 +12,15 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
- * What the backoffice may change about the live game: the main-menu announcement (and, next, the
- * remote game settings).
+ * What the backoffice may change about the live game: the main-menu announcement and the remote
+ * game settings.
  *
  * <p>ADMIN only. Everything here reaches every player the next time they open the menu — the same
  * reasoning that made test scores ADMIN only.</p>
@@ -29,7 +34,7 @@ public class AdminGameService {
 
     private static final Logger log = LoggerFactory.getLogger(AdminGameService.class);
 
-    public enum Outcome { SAVED, CLEARED, NOTHING_TO_CLEAR, INVALID }
+    public enum Outcome { SAVED, CLEARED, NOTHING_TO_CLEAR, INVALID, UNCHANGED }
 
     public record Result(Outcome outcome, String problem) {
 
@@ -54,6 +59,73 @@ public class AdminGameService {
     @Transactional(readOnly = true)
     public Optional<Announcement> announcement() {
         return content.announcement();
+    }
+
+    /** The current overrides, as the form shows them (plain strings, no trailing zeros). */
+    @Transactional(readOnly = true)
+    public Map<String, String> gameConfigForm() {
+        Map<String, String> form = new java.util.LinkedHashMap<>();
+        content.gameConfig().forEach((key, value) -> form.put(key, value.toPlainString()));
+        return form;
+    }
+
+    /**
+     * Replace the game settings from the form: a blank field means "back to the game's own value".
+     *
+     * <p>All or nothing, like the save editor — one field out of range saves none of them, so the
+     * live configuration is never half of what somebody meant. Audited with every change, old value
+     * and new.</p>
+     */
+    @Transactional
+    public Result saveGameConfig(String actor, Map<String, String> submitted, String callerIp) {
+        Map<String, BigDecimal> before = content.gameConfig();
+        Map<String, BigDecimal> after = new java.util.LinkedHashMap<>();
+
+        for (GameTunable tunable : GameTunable.values()) {
+            String raw = submitted.getOrDefault(tunable.key(), "").trim();
+            if (raw.isEmpty()) {
+                continue;
+            }
+            BigDecimal parsed;
+            try {
+                parsed = new BigDecimal(raw.replace(',', '.'));
+            } catch (NumberFormatException notANumber) {
+                return new Result(Outcome.INVALID, tunable.label() + " must be a number.");
+            }
+            Optional<BigDecimal> accepted = tunable.accept(parsed);
+            if (accepted.isEmpty()) {
+                return new Result(Outcome.INVALID, tunable.label() + " must be "
+                        + (tunable.whole() ? "a whole number " : "") + "from " + tunable.min()
+                        + " to " + tunable.max() + ".");
+            }
+            after.put(tunable.key(), accepted.get());
+        }
+
+        List<String> changes = new ArrayList<>();
+        for (GameTunable tunable : GameTunable.values()) {
+            BigDecimal was = before.get(tunable.key());
+            BigDecimal now = after.get(tunable.key());
+            boolean same = was == null ? now == null : now != null && was.compareTo(now) == 0;
+            if (!same) {
+                changes.add(tunable.key() + " " + (was == null ? "default" : was.toPlainString())
+                        + " → " + (now == null ? "default" : now.toPlainString()));
+            }
+        }
+        if (changes.isEmpty()) {
+            return Result.of(Outcome.UNCHANGED);
+        }
+
+        if (after.isEmpty()) {
+            settings.remove(GameTunable.SETTING_KEY);
+        } else {
+            ObjectNode value = json.createObjectNode();
+            after.forEach(value::put);
+            settings.put(GameTunable.SETTING_KEY, value, actor);
+        }
+
+        audit.gameConfigChanged(actor, changes, callerIp);
+        log.info("admin '{}' changed the game settings: {}", actor, changes);
+        return Result.of(Outcome.SAVED);
     }
 
     /**

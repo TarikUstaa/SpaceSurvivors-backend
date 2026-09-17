@@ -139,6 +139,11 @@ public class AdminAudit {
                 "published a " + level + " announcement: \"" + message + "\"", callerIp);
     }
 
+    public void gameConfigChanged(String actor, List<String> changes, String callerIp) {
+        write(actor, AdminAction.GAME_CONFIG_CHANGED, null,
+                "changed game settings: " + String.join(", ", changes), callerIp);
+    }
+
     public void announcementCleared(String actor, String callerIp) {
         write(actor, AdminAction.ANNOUNCEMENT_CLEARED, null, "cleared the announcement", callerIp);
     }
