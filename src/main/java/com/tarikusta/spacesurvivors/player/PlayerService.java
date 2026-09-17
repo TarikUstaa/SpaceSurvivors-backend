@@ -12,7 +12,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.security.SecureRandom;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -25,19 +24,10 @@ import java.util.UUID;
 @Service
 public class PlayerService {
 
-    /** Always exactly six digits: User100000..User999999, so 900k names to draw from. */
-    private static final int NAME_MIN_NUMBER = 100_000;
-    private static final int NAME_NUMBER_RANGE = 900_000;
-
     /** Enough attempts that exhausting them means something is genuinely wrong. */
     private static final int MAX_NAME_ATTEMPTS = 5;
 
-    private static final int NAME_MIN = 3;
-    private static final int NAME_MAX = 16;
-
     private static final Logger log = LoggerFactory.getLogger(PlayerService.class);
-
-    private static final SecureRandom RANDOM = new SecureRandom();
 
     private final PlayerProfileRepository players;
     private final PasswordEncoder passwordEncoder;
@@ -158,7 +148,7 @@ public class PlayerService {
     private UUID register(String deviceId, String rawSecret, String ip, String country) {
         String secretHash = passwordEncoder.encode(rawSecret);
         for (int attempt = 0; attempt < MAX_NAME_ATTEMPTS; attempt++) {
-            players.insertIfFree(deviceId, generateName(), ip, country, secretHash);
+            players.insertIfFree(deviceId, DisplayNames.generate(), ip, country, secretHash);
 
             // A row for this device now means either our insert landed or a concurrent
             // request for the same device won — both are the right answer. No row means
@@ -175,27 +165,9 @@ public class PlayerService {
                 + MAX_NAME_ATTEMPTS + " attempts");
     }
 
-    /**
-     * e.g. {@code User104829}. Random rather than sequential, so the name does not leak how
-     * many players there are.
-     */
-    private static String generateName() {
-        return "User" + (NAME_MIN_NUMBER + RANDOM.nextInt(NAME_NUMBER_RANGE));
-    }
-
     private static void requireValidName(String name) {
-        if (name.length() < NAME_MIN || name.length() > NAME_MAX) {
-            throw new InvalidInputException(
-                    "name must be " + NAME_MIN + "-" + NAME_MAX + " characters");
-        }
-        for (int i = 0; i < name.length(); i++) {
-            char c = name.charAt(i);
-            boolean allowed = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-                    || (c >= '0' && c <= '9') || c == '_';
-            if (!allowed) {
-                throw new InvalidInputException(
-                        "name may only contain letters, digits and underscore");
-            }
-        }
+        DisplayNames.problemWith(name).ifPresent(problem -> {
+            throw new InvalidInputException(problem);
+        });
     }
 }

@@ -13,8 +13,12 @@
 <main>
     <p class="crumb"><a th:href="@{/admin/players}">← All players</a></p>
 
-    <h1 th:text="${player.displayName}">Name</h1>
-    <p class="subtitle">Times in UTC.</p>
+    <h1><span th:text="${player.displayName}">Name</span>
+        <span class="pill test" th:if="${player.createdByAdmin}">TEST</span></h1>
+    <p class="subtitle">
+        <span th:if="${player.createdByAdmin}">Test player made in the backoffice — nobody can sign in as it. </span>
+        Times in UTC.
+    </p>
 
     <div th:replace="~{admin/fragments :: flash}"></div>
 
@@ -90,6 +94,44 @@
             Removing a single score is done from the
             <a th:href="@{/admin/leaderboard}">leaderboard</a>; it leaves the account alone.
         </p>
+
+        <!--
+          ADMIN only. Replaces the score in that mode whether the new one is higher or lower —
+          unlike a real run, which only ever raises it. Audited with the row it replaced.
+        -->
+        <form th:if="${isAdmin}" th:action="@{'/admin/players/' + ${player.playerId} + '/score'}"
+              method="post">
+            <h3>Set score</h3>
+            <div class="grid-fields">
+                <div class="field">
+                    <label for="mode">Mode</label>
+                    <select id="mode" name="mode">
+                        <option th:each="m : ${modes}" th:value="${m}" th:text="${m}">infinite</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="time">Time</label>
+                    <input type="text" id="time" name="time" required placeholder="8:20 or 500">
+                </div>
+                <div class="field">
+                    <label for="kills">Kills</label>
+                    <input type="text" id="kills" name="kills" inputmode="numeric" pattern="[0-9]+" required>
+                </div>
+                <div class="field">
+                    <label for="level">Level</label>
+                    <input type="text" id="level" name="level" inputmode="numeric" pattern="[0-9]+" required value="1">
+                </div>
+                <div class="field">
+                    <label for="bosses">Bosses</label>
+                    <input type="text" id="bosses" name="bosses" inputmode="numeric" pattern="[0-9]+" required value="0">
+                </div>
+            </div>
+            <button type="submit" class="primary compact">Set score</button>
+            <p class="muted small">
+                Goes straight onto the public board. The game's own limit still applies: no more
+                than 60 kills a second.
+            </p>
+        </form>
     </section>
 
     <!-- ADMIN only. SUPPORT would be refused anyway; there is no point offering the button. -->

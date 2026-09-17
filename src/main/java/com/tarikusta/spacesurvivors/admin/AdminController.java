@@ -110,8 +110,65 @@ public class AdminController {
     public String player(@PathVariable UUID playerId, Model model, Authentication authentication) {
         model.addAttribute("player", players.detail(playerId));
         model.addAttribute("scores", board.scoresOf(playerId));
+        model.addAttribute("modes", board.modes());
         model.addAttribute("admin", authentication.getName());
         return "admin/player";
+    }
+
+    /**
+     * Create a test player and go straight to their page, where their scores are set.
+     *
+     * <p>{@code /players/new} is a POST only. A GET to it is read as a player id that is not a
+     * UUID and answers the ordinary not-found page, which is the right answer for a URL that does
+     * not name a page.</p>
+     */
+    @PostMapping("/players/new")
+    public String createTestPlayer(@RequestParam(required = false) String displayName,
+                                   RedirectAttributes redirect,
+                                   Authentication authentication,
+                                   HttpServletRequest request) {
+        AdminPlayerService.Created result = players.createTestPlayer(
+                authentication.getName(), displayName, ClientAddress.of(request));
+
+        return switch (result.outcome()) {
+            case CREATED -> {
+                redirect.addFlashAttribute("message", "Created test player "
+                        + result.displayName() + ". Nobody can sign in as it; set its scores below.");
+                yield "redirect:/admin/players/" + result.playerId();
+            }
+            case INVALID_NAME -> {
+                redirect.addFlashAttribute("warning", "Nothing was created — " + result.problem() + ".");
+                yield "redirect:/admin/players";
+            }
+            case NAME_TAKEN -> {
+                redirect.addFlashAttribute("warning", result.displayName().isEmpty()
+                        ? "Nothing was created — no free generated name was found. Try again."
+                        : "Nothing was created — '" + result.displayName() + "' is already taken.");
+                yield "redirect:/admin/players";
+            }
+        };
+    }
+
+    /** Set one score by hand. Every outcome returns to the player, where the scores are listed. */
+    @PostMapping("/players/{playerId}/score")
+    public String setScore(@PathVariable UUID playerId,
+                           @RequestParam(required = false) String mode,
+                           @RequestParam(required = false) String time,
+                           @RequestParam(required = false) String kills,
+                           @RequestParam(required = false) String level,
+                           @RequestParam(required = false) String bosses,
+                           RedirectAttributes redirect,
+                           Authentication authentication,
+                           HttpServletRequest request) {
+        AdminBoardService.ScoreResult result = board.setScore(authentication.getName(), playerId,
+                mode, time, kills, level, bosses, ClientAddress.of(request));
+
+        if (result.written()) {
+            redirect.addFlashAttribute("message", "Score set. It is on the public board now.");
+        } else {
+            redirect.addFlashAttribute("warning", "Nothing was written. " + result.problem());
+        }
+        return "redirect:/admin/players/" + playerId;
     }
 
     /**

@@ -1,13 +1,18 @@
 package com.tarikusta.spacesurvivors.admin;
 
 import com.tarikusta.spacesurvivors.exception.NotFoundException;
+import com.tarikusta.spacesurvivors.player.DisplayNames;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -43,12 +48,29 @@ public class AdminPlayerService {
     public record Overview(List<AdminPlayerRow> rows, int total, long withSaves) {
     }
 
+    /** How a test player creation ended. */
+    public enum Creation { CREATED, INVALID_NAME, NAME_TAKEN }
+
+    /**
+     * @param playerId set only for {@link Creation#CREATED}
+     * @param problem  set only for {@link Creation#INVALID_NAME}
+     */
+    public record Created(Creation outcome, UUID playerId, String displayName, String problem) {
+    }
+
+    /** Generated names can collide; this many tries means something is really wrong. */
+    private static final int NAME_ATTEMPTS = 5;
+
     private final AdminPlayerQueries players;
     private final AdminAudit audit;
+    private final PasswordEncoder passwordEncoder;
+    private final SecureRandom random = new SecureRandom();
 
-    public AdminPlayerService(AdminPlayerQueries players, AdminAudit audit) {
+    public AdminPlayerService(AdminPlayerQueries players, AdminAudit audit,
+                              PasswordEncoder passwordEncoder) {
         this.players = players;
         this.audit = audit;
+        this.passwordEncoder = passwordEncoder;
     }
 
     /**
@@ -69,6 +91,56 @@ public class AdminPlayerService {
     public AdminPlayerDetail detail(UUID playerId) {
         return players.findDetail(playerId)
                 .orElseThrow(() -> new NotFoundException("no such player"));
+    }
+
+    /**
+     * Make up a player, for testing the list and the leaderboard with more than one real account.
+     *
+     * <p><b>Nobody can sign in as it</b>, and that is designed rather than incidental. The device
+     * id is random and the stored secret is the hash of 32 random bytes that are thrown away the
+     * moment they are hashed. The one thing that must not happen is a {@code null} secret: the
+     * game's sign-in treats null as a device from before secrets existed and lets whoever presents
+     * that device id first set one — the account would belong to the first caller to guess it.</p>
+     *
+     * <p>A blank name means "generate one", exactly as the game does for a new device. A name that
+     * is typed is not retried on collision: the operator asked for that name, and getting a
+     * different one silently would be the wrong answer.</p>
+     *
+     * <p>ADMIN only: invented players reach the public board, so this is not day-to-day work.</p>
+     */
+    @Transactional
+    @PreAuthorize(AdminRole.IS_ADMIN)
+    public Created createTestPlayer(String actor, String requestedName, String callerIp) {
+        String typed = requestedName == null ? "" : requestedName.trim();
+        boolean generated = typed.isEmpty();
+
+        if (!generated) {
+            Optional<String> problem = DisplayNames.problemWith(typed);
+            if (problem.isPresent()) {
+                return new Created(Creation.INVALID_NAME, null, typed, problem.get());
+            }
+        }
+
+        String deviceId = "admin-test-" + UUID.randomUUID();
+        String secretHash = passwordEncoder.encode(unguessableSecret());
+
+        for (int attempt = 0; attempt < (generated ? NAME_ATTEMPTS : 1); attempt++) {
+            String name = generated ? DisplayNames.generate() : typed;
+            if (players.insertTestPlayer(deviceId, name, secretHash) == 1) {
+                UUID id = players.findIdByDeviceId(deviceId).orElseThrow();
+                audit.testPlayerCreated(actor, id, name, callerIp);
+                log.info("admin '{}' created test player {} ('{}')", actor, id, name);
+                return new Created(Creation.CREATED, id, name, null);
+            }
+        }
+        return new Created(Creation.NAME_TAKEN, null, typed, null);
+    }
+
+    /** 32 random bytes. Returned only to be hashed; nothing keeps it. */
+    private String unguessableSecret() {
+        byte[] bytes = new byte[32];
+        random.nextBytes(bytes);
+        return Base64.getEncoder().encodeToString(bytes);
     }
 
     /**

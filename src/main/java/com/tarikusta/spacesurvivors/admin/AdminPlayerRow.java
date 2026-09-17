@@ -17,8 +17,9 @@ import java.util.UUID;
  * this list, and both are the kind of thing that ends up on a screen in a meeting. The
  * device id is also half of a player's credential.</p>
  *
- * @param boardEntries how many leaderboard rows this player holds (0-2: one per mode)
- * @param saves        1 if a cloud save exists, 0 if the player has only ever authenticated
+ * @param boardEntries   how many leaderboard rows this player holds (0-2: one per mode)
+ * @param saves          1 if a cloud save exists, 0 if the player has only ever authenticated
+ * @param createdByAdmin a test player made in the backoffice, not a real device (V6)
  */
 public record AdminPlayerRow(
         UUID playerId,
@@ -27,7 +28,8 @@ public record AdminPlayerRow(
         Instant firstLoginDate,
         Instant updatedAt,
         Long boardEntries,
-        Long saves) {
+        Long saves,
+        boolean createdByAdmin) {
 
     public boolean hasSave() {
         return saves != null && saves > 0;

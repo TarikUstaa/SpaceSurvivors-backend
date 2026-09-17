@@ -1,8 +1,10 @@
 package com.tarikusta.spacesurvivors.admin;
 
+import com.tarikusta.spacesurvivors.exception.NotFoundException;
 import com.tarikusta.spacesurvivors.leaderboard.LeaderboardService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,11 +27,29 @@ public class AdminBoardService {
 
     private static final String DEFAULT_MODE = "infinite";
 
+    /** A day. No run lasts that long; past it the number is a typo. */
+    private static final int MAX_SECONDS = 24 * 60 * 60;
+    private static final int MAX_LEVEL = 10_000;
+    private static final int MAX_BOSSES = 10_000;
+
+    /**
+     * @param problem set only when the score was refused; the sentence the page shows
+     */
+    public record ScoreResult(boolean written, String problem) {
+
+        static ScoreResult refused(String problem) {
+            return new ScoreResult(false, problem);
+        }
+    }
+
     private final AdminLeaderboardQueries queries;
+    private final AdminPlayerQueries players;
     private final AdminAudit audit;
 
-    public AdminBoardService(AdminLeaderboardQueries queries, AdminAudit audit) {
+    public AdminBoardService(AdminLeaderboardQueries queries, AdminPlayerQueries players,
+                             AdminAudit audit) {
         this.queries = queries;
+        this.players = players;
         this.audit = audit;
     }
 
@@ -69,6 +89,101 @@ public class AdminBoardService {
     @Transactional(readOnly = true)
     public List<AdminBoardRow> scoresOf(UUID playerId) {
         return queries.listByPlayer(playerId);
+    }
+
+    /**
+     * Set one player's score in one mode by hand, replacing whatever was there.
+     *
+     * <p><b>The mode is not normalised the way the page's filter is.</b> {@link #normalise} falls
+     * back to a default because a mistyped URL should still show a board; a write that falls back
+     * would put a score in a mode nobody chose. An unknown mode is refused.</p>
+     *
+     * <p>The kill rate goes through {@link LeaderboardService#isPlausible}, the same rule the
+     * game's own submissions face. A test board full of scores no client could send would test a
+     * board that cannot exist.</p>
+     *
+     * <p>Time is accepted as seconds ({@code 500}) or as the clock the board shows
+     * ({@code 8:20}), so a value can be copied straight off the page.</p>
+     *
+     * <p>ADMIN only — an invented score is public the moment it is written.</p>
+     */
+    @Transactional
+    @PreAuthorize(AdminRole.IS_ADMIN)
+    public ScoreResult setScore(String actor, UUID playerId, String mode, String time,
+                                String kills, String level, String bosses, String callerIp) {
+        AdminPlayerDetail player = players.findDetail(playerId)
+                .orElseThrow(() -> new NotFoundException("no such player"));
+
+        String chosen = mode == null ? "" : mode.trim().toLowerCase(Locale.ROOT);
+        if (!LeaderboardService.MODES.contains(chosen)) {
+            return ScoreResult.refused("Mode must be one of " + modes() + ".");
+        }
+
+        Integer seconds = parseClock(time);
+        if (seconds == null || seconds > MAX_SECONDS) {
+            return ScoreResult.refused("Time must be seconds (500) or minutes:seconds (8:20), "
+                    + "at most a day.");
+        }
+        Integer killCount = parseWhole(kills, Integer.MAX_VALUE);
+        if (killCount == null) {
+            return ScoreResult.refused("Kills must be a whole number, 0 or more.");
+        }
+        Integer reached = parseWhole(level, MAX_LEVEL);
+        if (reached == null || reached < 1) {
+            return ScoreResult.refused("Level must be a whole number from 1 to " + MAX_LEVEL + ".");
+        }
+        Integer bossCount = parseWhole(bosses, MAX_BOSSES);
+        if (bossCount == null) {
+            return ScoreResult.refused("Bosses must be a whole number from 0 to " + MAX_BOSSES + ".");
+        }
+        if (!LeaderboardService.isPlausible(seconds, killCount)) {
+            return ScoreResult.refused("No run can make " + killCount + " kills in " + seconds
+                    + " seconds — the game itself would refuse it.");
+        }
+
+        String before = queries.listByPlayer(playerId).stream()
+                .filter(row -> row.mode().equals(chosen))
+                .findFirst()
+                .map(AdminBoardService::describe)
+                .orElse(null);
+
+        queries.setEntry(playerId, chosen, seconds, killCount, reached, bossCount);
+
+        String after = describe(seconds, killCount, reached, bossCount);
+        audit.scoreSet(actor, playerId, player.displayName(), chosen, before, after, callerIp);
+        log.info("admin '{}' set the {} score of player {} to {}", actor, chosen, playerId, after);
+        return new ScoreResult(true, null);
+    }
+
+    private static String describe(AdminBoardRow row) {
+        return describe(Math.round(row.survivedSeconds()), row.kills(), row.reachedLevel(),
+                row.bossesDefeated());
+    }
+
+    private static String describe(long seconds, int kills, int level, int bosses) {
+        return String.format(Locale.ROOT, "%d:%02d, %d kills, level %d, %d bosses",
+                seconds / 60, seconds % 60, kills, level, bosses);
+    }
+
+    /** {@code 500} or {@code 8:20}. Null for anything else, including a negative. */
+    private static Integer parseClock(String raw) {
+        String text = raw == null ? "" : raw.trim();
+        int colon = text.indexOf(':');
+        if (colon < 0) {
+            return parseWhole(text, Integer.MAX_VALUE);
+        }
+        Integer minutes = parseWhole(text.substring(0, colon), Integer.MAX_VALUE / 60);
+        Integer secs = parseWhole(text.substring(colon + 1), 59);
+        return minutes == null || secs == null ? null : minutes * 60 + secs;
+    }
+
+    private static Integer parseWhole(String raw, int max) {
+        String text = raw == null ? "" : raw.trim();
+        if (text.isEmpty() || text.length() > 10 || !text.chars().allMatch(Character::isDigit)) {
+            return null;
+        }
+        long value = Long.parseLong(text);
+        return value <= max ? (int) value : null;
     }
 
     /**

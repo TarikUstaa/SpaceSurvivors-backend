@@ -19,6 +19,26 @@
 
     <div th:replace="~{admin/fragments :: flash}"></div>
 
+    <!--
+      ADMIN only. A test player is a real row: the game's public leaderboard shows its scores.
+      The TEST label below is what tells the two apart, and deleting one removes its scores too.
+    -->
+    <section class="panel" th:if="${isAdmin}">
+        <h2>New test player</h2>
+        <form th:action="@{/admin/players/new}" method="post" class="inline-form">
+            <div class="field inline">
+                <label for="displayName">Name</label>
+                <input type="text" id="displayName" name="displayName" autocomplete="off"
+                       maxlength="16" pattern="[A-Za-z0-9_]{3,16}" placeholder="blank = UserNNNNNN">
+            </div>
+            <button type="submit" class="primary compact">Create</button>
+        </form>
+        <p class="muted small">
+            For testing the list and the leaderboard. Nobody can sign in as it — it has no device.
+            Its scores are public; delete the player to remove them.
+        </p>
+    </section>
+
     <div class="table-wrap">
         <table>
             <thead>
@@ -35,6 +55,7 @@
             <tr th:each="p : ${players}">
                 <td class="name">
                     <a th:href="@{'/admin/players/' + ${p.playerId}}" th:text="${p.displayName}">Name</a>
+                    <span class="pill test" th:if="${p.createdByAdmin}">TEST</span>
                 </td>
                 <td class="muted" th:text="${p.country} ?: '—'">—</td>
                 <td class="muted" th:text="${p.firstSeen()}">—</td>

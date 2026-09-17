@@ -93,6 +93,9 @@ public class AdminSecurityConfig {
                         // is covered and not only what lies beneath it.
                         .requestMatchers("/admin/users/**", "/admin/audit/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/admin/players/*/delete").hasRole("ADMIN")
+                        // Invented players and scores are public the moment they are written.
+                        .requestMatchers(HttpMethod.POST,
+                                "/admin/players/new", "/admin/players/*/score").hasRole("ADMIN")
                         // Everything else is the day-to-day work, and both roles do it. Listed
                         // by name rather than as authenticated(): an account whose role this
                         // application does not know gets nothing, not everything.

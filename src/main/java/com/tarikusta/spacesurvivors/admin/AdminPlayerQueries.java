@@ -11,7 +11,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * The backoffice's read-only view of the players.
+ * The backoffice's view of the players: reading them, creating a test player, deleting one.
  *
  * <p>Extends {@link Repository} rather than {@code JpaRepository} on purpose: the base
  * interface contributes no methods at all, so this type exposes exactly the query below and
@@ -40,7 +40,8 @@ public interface AdminPlayerQueries extends Repository<PlayerProfile, UUID> {
             select new com.tarikusta.spacesurvivors.admin.AdminPlayerRow(
                        p.playerId, p.displayName, p.country, p.firstLoginDate, p.updatedAt,
                        (select count(l) from LeaderboardEntry l where l.playerId = p.playerId),
-                       (select count(g) from PlayerProgress g where g.playerId = p.playerId))
+                       (select count(g) from PlayerProgress g where g.playerId = p.playerId),
+                       p.createdByAdmin)
             from PlayerProfile p
             order by p.firstLoginDate desc
             """)
@@ -58,12 +59,38 @@ public interface AdminPlayerQueries extends Repository<PlayerProfile, UUID> {
             select new com.tarikusta.spacesurvivors.admin.AdminPlayerDetail(
                        p.playerId, p.displayName, p.country, p.lastIp,
                        p.firstLoginDate, p.updatedAt,
-                       g.version, g.updatedAt, g.progressData)
+                       g.version, g.updatedAt, g.progressData, p.createdByAdmin)
             from PlayerProfile p
             left join PlayerProgress g on g.playerId = p.playerId
             where p.playerId = :playerId
             """)
     Optional<AdminPlayerDetail> findDetail(@Param("playerId") UUID playerId);
+
+    /**
+     * Create a test player — the one write in this interface that adds rather than removes.
+     *
+     * <p>{@code ON CONFLICT DO NOTHING} for the same reason {@code PlayerProfileRepository.insertIfFree}
+     * uses it: a taken name returns 0 instead of raising, and a raised unique violation would
+     * abort the transaction, so neither a retry with another generated name nor the audit write
+     * could run afterwards.</p>
+     *
+     * <p>{@code created_by_admin} is set here and in no other statement in the application.</p>
+     *
+     * @param secretHash never null — see V6__admin_test_players.sql for what null would allow
+     * @return 1 if the player was created, 0 if the name (or, impossibly, the device id) was taken
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            INSERT INTO player_profile (device_id, display_name, device_secret_hash, created_by_admin)
+            VALUES (:deviceId, :displayName, :secretHash, true)
+            ON CONFLICT DO NOTHING
+            """, nativeQuery = true)
+    int insertTestPlayer(@Param("deviceId") String deviceId,
+                         @Param("displayName") String displayName,
+                         @Param("secretHash") String secretHash);
+
+    @Query("select p.playerId from PlayerProfile p where p.deviceId = :deviceId")
+    Optional<UUID> findIdByDeviceId(@Param("deviceId") String deviceId);
 
     /**
      * Delete a player, and with them everything that hangs off them.

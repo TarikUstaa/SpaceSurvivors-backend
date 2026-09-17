@@ -109,6 +109,25 @@ public class AdminAudit {
                 "removed the " + mode + " score", callerIp);
     }
 
+    /**
+     * @param before the row being replaced, already worded, or null if the player had no score in
+     *               that mode
+     * @param after  the row as written, already worded
+     */
+    public void scoreSet(String actor, UUID playerId, String displayName, String mode,
+                         String before, String after, String callerIp) {
+        write(actor, AdminAction.SCORE_SET, String.valueOf(playerId),
+                "set the " + mode + " score of '" + displayName + "' to " + after
+                + (before == null ? " (no previous score)" : " (was " + before + ")"),
+                callerIp);
+    }
+
+    public void testPlayerCreated(String actor, UUID playerId, String displayName,
+                                  String callerIp) {
+        write(actor, AdminAction.TEST_PLAYER_CREATED, String.valueOf(playerId),
+                "created test player '" + displayName + "'", callerIp);
+    }
+
     public void passwordChanged(String actor, String callerIp) {
         write(actor, AdminAction.PASSWORD_CHANGED, actor, "changed their own password", callerIp);
     }

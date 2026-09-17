@@ -18,6 +18,7 @@ import java.util.UUID;
  * credential and nothing on this page needs it; leaving it out means a screenshot of this
  * page is not half of somebody's account.</p>
  *
+ * @param createdByAdmin a test player made in the backoffice (V6) — nobody can sign in as it
  * @param lastIp personal data, which is why it appears here and nowhere the player can see.
  *               It earns its place on this one screen because "is this the same person as
  *               that account" is the question an administrator actually has.
@@ -31,7 +32,8 @@ public record AdminPlayerDetail(
         Instant updatedAt,
         Integer saveVersion,
         Instant saveUpdatedAt,
-        String saveJson) {
+        String saveJson,
+        boolean createdByAdmin) {
 
     private static final DateTimeFormatter MINUTE =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")

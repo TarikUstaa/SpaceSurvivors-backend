@@ -997,6 +997,37 @@ nothing and does **not** raise the revision (raising it would make the device di
 for no edit). The audit row lists every changed field with its old value, because the save itself
 keeps only the new one.
 
+### D34 — test players and hand-set scores, and the null secret that must never be written (2026-09-17)
+
+Tarik: "admin'e leaderboard'a kayıt ekleme özelliği de getirelim, test için" — and whether creating
+players from the backoffice would cause trouble. Built both, ADMIN only: **Players → New test
+player**, and **Set score** on a player's page.
+
+**The trouble that was real: a null `device_secret_hash`.** V2 reads null as "a device from before
+secrets existed" and lets the next caller presenting that device id *set* the secret. A backoffice
+insert that left it null would create an account belonging to whoever guessed the device id first.
+So a test player gets a random `admin-test-<uuid>` device id and the BCrypt hash of 32 random bytes
+that are discarded on the spot. A test takes the real device id to `/v1/auth/token` and asserts 401.
+
+**`player_profile.created_by_admin` (V6).** A column, not a naming convention — a name can be changed,
+a convention forgotten. Written by the one insert that makes such a player, mapped read-only in the
+entity, shown as a loud TEST label in the list and on the page. Test players are real rows and their
+scores are on the public board; deleting the player removes the scores (the existing cascade).
+**Before the game has real players, every `created_by_admin` row should go** — added to Open / next.
+
+**Set score** writes unconditionally, up *or down* (the game's `saveBest` is only called when a run
+beats the stored best), audits the row it replaced, and refuses an unknown mode rather than falling
+back the way the leaderboard page's filter does — a write that falls back puts a score in a mode
+nobody chose. The kill-rate rule is the game's own, now `LeaderboardService.isPlausible`, so a test
+board cannot hold a score no client could send. Time accepts `500` or `8:20`.
+
+**Two rules stopped being private instead of being copied:** display-name validation and generation
+moved from `PlayerService` into `player/DisplayNames`, and the kill-rate check became
+`LeaderboardService.isPlausible`. `AdminLeaderboardQueries` used to say an administrator should never
+invent a row; that comment now says why this changed.
+
+235 tests.
+
 ## Open / next
 
 *Priority order.*
@@ -1008,12 +1039,14 @@ keeps only the new one.
 1. ~~**`country` has no source.**~~ — **done 2026-09-15.** DB-IP Lite read locally, no account
    or key needed; see D31. Locally `last_ip` is always `::1`, which has no country, so this
    stays invisible on a developer's machine either way.
-2. **IP retention.** `last_ip` is personal data, stored deliberately; it needs a purpose and
+2. **Remove test players before launch.** `DELETE FROM player_profile WHERE created_by_admin`
+   takes their scores with them (cascade). D34.
+3. **IP retention.** `last_ip` is personal data, stored deliberately; it needs a purpose and
    a "delete IPs older than N days" job before this is public.
-3. **Pagination** — the board is capped at 100 rows and there is no `page`. Fine now,
+4. **Pagination** — the board is capped at 100 rows and there is no `page`. Fine now,
    wrong the day there are more players than that.
-4. ~~**Least-privilege DB roles**~~ — **done 2026-09-10** (`b8d6e4d`). See F19.
-5. ~~**Azure deploy**~~ — **live 2026-09-10.**
+5. ~~**Least-privilege DB roles**~~ — **done 2026-09-10** (`b8d6e4d`). See F19.
+6. ~~**Azure deploy**~~ — **live 2026-09-10.**
    `https://spacesurvivors-api.salmonmeadow-a79134b3.italynorth.azurecontainerapps.io`
    Container App (scales to zero) + Postgres B1ms + Key Vault, Italy North, deployed by CI on
    every green push to main. Unity's `BackendConfig.DefaultBaseUrl` points at it.
@@ -1025,10 +1058,10 @@ keeps only the new one.
    **Free Trial expires ~30 days in**; without an upgrade to Pay-As-You-Go the subscription is
    disabled and the service stops. Spending limit is on, so nothing is ever charged silently.
 
-6. **Firebase auth** — optional now that D19 exists; it would add "recover my account on a
+7. **Firebase auth** — optional now that D19 exists; it would add "recover my account on a
    new phone", which is the honest gap in device-based identity. `player_id` stays stable,
    so still cheap to add. `docs/firebase-setup.md` (from the scrapped repo) needs rewriting.
-7. ~~**Backoffice**~~ — **live 2026-09-11**, five screens. See the section above. ~~A real audit
+8. ~~**Backoffice**~~ — **live 2026-09-11**, five screens. See the section above. ~~A real audit
    table instead of log lines~~ — **done the same day** (D28). ~~A second administrator account~~
    — **roles, accounts and save editing done 2026-09-17** (D32, D33). Still open within it: search
    and pagination once the player list outgrows a screen, and ending *other* sessions of the same

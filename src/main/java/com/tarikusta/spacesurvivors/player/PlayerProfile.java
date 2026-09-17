@@ -74,6 +74,13 @@ public class PlayerProfile {
     @Column(name = "device_secret_hash")
     private String deviceSecretHash;
 
+    /**
+     * True for a player made up in the backoffice for testing (V6). Read-only here: it is written
+     * by that one insert and never changed, and no path through the game may set it.
+     */
+    @Column(name = "created_by_admin", insertable = false, updatable = false)
+    private boolean createdByAdmin;
+
     /** Set once by the database default and never touched again. */
     @Column(name = "first_login_date", insertable = false, updatable = false)
     private Instant firstLoginDate;
@@ -142,6 +149,10 @@ public class PlayerProfile {
 
     public void setDeviceSecretHash(String deviceSecretHash) {
         this.deviceSecretHash = deviceSecretHash;
+    }
+
+    public boolean isCreatedByAdmin() {
+        return createdByAdmin;
     }
 
     public String getCountry() {

@@ -129,9 +129,18 @@ public class LeaderboardService {
         return normalised;
     }
 
+    /**
+     * Could a real run have produced this? Public because the backoffice writes scores by hand,
+     * and a hand-written score that no client could produce would make a test of the board test
+     * something the board will never see.
+     */
+    public static boolean isPlausible(double survivedSeconds, int kills) {
+        return survivedSeconds < MIN_SECONDS_TO_JUDGE_RATE
+                || kills / survivedSeconds <= MAX_KILLS_PER_SECOND;
+    }
+
     private void rejectImplausible(LeaderboardDtos.Submission run) {
-        if (run.survivedSeconds() >= MIN_SECONDS_TO_JUDGE_RATE
-                && run.kills() / run.survivedSeconds() > MAX_KILLS_PER_SECOND) {
+        if (!isPlausible(run.survivedSeconds(), run.kills())) {
             // WARN, not INFO: a legitimate client cannot produce this, so every one is
             // either a tampered client or a balance change nobody told the server about.
             log.warn("implausible run rejected: {} kills in {}s, mode {}",

@@ -11,13 +11,18 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * What the backoffice may do to the leaderboard: read a whole mode, and remove one row.
+ * What the backoffice may do to the leaderboard: read a whole mode, set one row, remove one row.
  *
- * <p>Two methods, and the bare {@link Repository} marker again, for the same reason
- * {@code LeaderboardEntryRepository} uses it — that interface exists to make
- * {@code saveBest} the only way a score is ever written, and inheriting {@code JpaRepository}
- * here would hand the backoffice a {@code save} that bypasses it. An administrator should be
- * able to take a row away, not to invent one.</p>
+ * <p>The bare {@link Repository} marker again, for the same reason
+ * {@code LeaderboardEntryRepository} uses it: inheriting {@code JpaRepository} would hand the
+ * backoffice a generic {@code save} and {@code deleteAll}. Every write here is a named statement
+ * with one purpose.</p>
+ *
+ * <p>This interface used to say an administrator should be able to take a row away and never
+ * invent one. That changed on purpose on 2026-09-17 ({@link #setEntry}): testing the board with a
+ * single real account is not testing it. The invented rows are kept honest another way — only
+ * ADMIN may write them, every write is audited with the value it replaced, and the same
+ * plausibility rule the game's submissions face still applies.</p>
  */
 public interface AdminLeaderboardQueries extends Repository<LeaderboardEntry, LeaderboardEntryId> {
 
@@ -55,6 +60,32 @@ public interface AdminLeaderboardQueries extends Repository<LeaderboardEntry, Le
              ORDER BY e.mode
             """)
     List<AdminBoardRow> listByPlayer(@Param("playerId") UUID playerId);
+
+    /**
+     * Set one player's score in one mode, replacing whatever was there — higher or lower.
+     *
+     * <p>Unlike the game's {@code saveBest}, which is only called when a run beats the stored
+     * best, this writes unconditionally: an operator setting up a test board needs to be able to
+     * put a score <em>down</em> as well as up.</p>
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            INSERT INTO leaderboard
+                (player_id, mode, survived_seconds, kills, reached_level, bosses_defeated)
+            VALUES (:playerId, :mode, :seconds, :kills, :reachedLevel, :bossesDefeated)
+            ON CONFLICT (player_id, mode) DO UPDATE SET
+                survived_seconds = EXCLUDED.survived_seconds,
+                kills            = EXCLUDED.kills,
+                reached_level    = EXCLUDED.reached_level,
+                bosses_defeated  = EXCLUDED.bosses_defeated,
+                achieved_at      = now()
+            """, nativeQuery = true)
+    void setEntry(@Param("playerId") UUID playerId,
+                  @Param("mode") String mode,
+                  @Param("seconds") double seconds,
+                  @Param("kills") int kills,
+                  @Param("reachedLevel") int reachedLevel,
+                  @Param("bossesDefeated") int bossesDefeated);
 
     /**
      * Take one score off the board.
