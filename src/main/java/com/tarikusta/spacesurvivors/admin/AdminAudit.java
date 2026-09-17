@@ -2,15 +2,13 @@ package com.tarikusta.spacesurvivors.admin;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
 
 /**
- * Reads and writes the audit trail.
+ * Writes the audit trail. Reading it is {@link AdminAuditSearch}.
  *
  * <p><b>One method per kind of event, rather than a general {@code record(action, target,
  * text)}.</b> A general method leaves the wording to whoever calls it, and five call sites
@@ -59,41 +57,13 @@ public class AdminAudit {
     private static final int MAX_TARGET = 128;
     private static final int MAX_SUMMARY = 512;
 
-    /**
-     * How many entries the page draws. Large enough that a day's work fits, small enough that
-     * the page stays one query and one screenful of HTML.
-     */
-    private static final int RECENT = 200;
-
     private final AdminAuditRepository store;
 
     public AdminAudit(AdminAuditRepository store) {
         this.store = store;
     }
 
-    // ── reading ────────────────────────────────────────────────────────────────────────
-
-    /**
-     * The recent entries plus the count of all of them, so the page can say it is showing a
-     * slice rather than implying it is showing everything.
-     */
-    public record Trail(List<AdminAuditEntry> entries, long total, int limit) {
-
-        public int shown() {
-            return entries.size();
-        }
-
-        public boolean truncated() {
-            return total > entries.size();
-        }
-    }
-
-    @Transactional(readOnly = true)
-    public Trail recent() {
-        List<AdminAuditEntry> page =
-                store.findAllByOrderByHappenedAtDescAuditIdDesc(Limit.of(RECENT));
-        return new Trail(page, store.count(), RECENT);
-    }
+    // Reading the trail is AdminAuditSearch's job; this class only writes it.
 
     // ── the destructive ones: a failure here must take the action down with it ──────────
 
@@ -120,6 +90,17 @@ public class AdminAudit {
                 "set the " + mode + " score of '" + displayName + "' to " + after
                 + (before == null ? " (no previous score)" : " (was " + before + ")"),
                 callerIp);
+    }
+
+    /**
+     * Not one of the destructive writes, and not contained like the sign-in ones either: an export
+     * that cannot be recorded should fail rather than hand the file over unrecorded.
+     */
+    public void auditExported(String actor, int rows, boolean truncated, String filter,
+                              String callerIp) {
+        write(actor, AdminAction.AUDIT_EXPORTED, null,
+                "exported " + rows + " audit entries (" + filter + ")"
+                + (truncated ? ", cut at the export limit" : ""), callerIp);
     }
 
     public void playerRenamed(String actor, UUID playerId, String from, String to,

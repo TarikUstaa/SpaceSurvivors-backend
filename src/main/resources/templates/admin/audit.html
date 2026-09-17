@@ -17,6 +17,43 @@
         Nothing on this page can be edited or removed.
     </p>
 
+    <!-- GET: a filter is a URL, and the export link below carries the same parameters. -->
+    <form th:action="@{/admin/audit}" method="get" class="inline-form search">
+        <div class="field inline">
+            <label for="actor">Who</label>
+            <input type="text" id="actor" name="actor" th:value="${filter.actor}" placeholder="username">
+        </div>
+        <div class="field inline">
+            <label for="action">What</label>
+            <select id="action" name="action">
+                <option value="">Any action</option>
+                <option th:each="a : ${actions}" th:value="${a.name()}"
+                        th:text="${#strings.replace(#strings.toLowerCase(a.name()), '_', ' ')}"
+                        th:selected="${a == filter.action}">action</option>
+            </select>
+        </div>
+        <div class="field inline">
+            <label for="text">Details or target</label>
+            <input type="text" id="text" name="text" th:value="${filter.text}" placeholder="player name or id">
+        </div>
+        <div class="field inline">
+            <label for="from">From</label>
+            <input type="date" id="from" name="from" th:value="${filter.from}">
+        </div>
+        <div class="field inline">
+            <label for="to">To</label>
+            <input type="date" id="to" name="to" th:value="${filter.to}">
+        </div>
+        <button type="submit" class="primary compact">Filter</button>
+        <a th:unless="${filter.isEmpty()}" th:href="@{/admin/audit}">Clear</a>
+    </form>
+
+    <p class="muted small">
+        <span th:text="${trail.matching}">0</span> matching.
+        <a th:href="@{/admin/audit/export(actor=${filter.actor}, action=${filter.actionName()}, text=${filter.text}, from=${filter.from}, to=${filter.to})}">Download as CSV</a>
+        — the download itself is recorded here.
+    </p>
+
     <div class="table-wrap">
         <table>
             <thead>
@@ -30,7 +67,7 @@
             </tr>
             </thead>
             <tbody>
-            <tr th:each="e : ${trail.entries}">
+            <tr th:each="e : ${trail.rows}">
                 <td class="muted" th:text="${e.when()}">—</td>
                 <td class="name" th:text="${e.actor}">admin</td>
                 <td>
@@ -38,7 +75,7 @@
                       The class is derived from the enum name, so a new AdminAction constant
                       gets the default styling rather than silently rendering an empty tag.
                     -->
-                    <span class="pill" th:classappend="${e.action.name()}"
+                    <span class="pill" th:classappend="${e.action} ? ${e.action.name()} : ''"
                           th:text="${e.label()}">signed in</span>
                 </td>
                 <td class="text" th:text="${e.summary}">did something</td>
@@ -48,14 +85,16 @@
             </tr>
             </tbody>
         </table>
-        <p class="empty" th:if="${trail.entries.isEmpty()}">
-            Nothing has happened yet. Signing in writes the first line.
+        <p class="empty" th:if="${trail.rows.isEmpty()}"
+           th:text="${filter.isEmpty()} ? 'Nothing has happened yet. Signing in writes the first line.' : 'Nothing matches that filter.'">
+            Nothing has happened yet.
         </p>
     </div>
 
     <p class="muted small" th:if="${trail.truncated()}">
         Showing the most recent <span th:text="${trail.limit}">200</span> of
-        <span th:text="${trail.total}">0</span> entries.
+        <span th:text="${trail.matching}">0</span> matching entries. Narrow the filter, or download
+        the CSV for up to 10,000.
     </p>
 </main>
 

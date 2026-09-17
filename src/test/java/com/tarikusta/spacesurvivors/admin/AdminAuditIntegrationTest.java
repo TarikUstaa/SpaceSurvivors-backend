@@ -263,7 +263,6 @@ class AdminAuditIntegrationTest {
                 .map(Method::getName)
                 .toList();
 
-        assertThat(methods).containsExactlyInAnyOrder("save", "count",
-                "findAllByOrderByHappenedAtDescAuditIdDesc");
+        assertThat(methods).containsExactlyInAnyOrder("save", "count");
     }
 }

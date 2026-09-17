@@ -40,6 +40,12 @@ public enum AdminAction {
      */
     SCORE_SET,
 
+    /**
+     * The audit trail was downloaded. It holds sign-in addresses and the record of every deletion,
+     * so a copy leaving the application is itself worth a line.
+     */
+    AUDIT_EXPORTED,
+
     /** A player's display name was changed from the backoffice — usually a name report. */
     PLAYER_RENAMED,
 
