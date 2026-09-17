@@ -1028,6 +1028,61 @@ invent a row; that comment now says why this changed.
 
 235 tests.
 
+### D35 — the backoffice grows up: eleven things in one pass (2026-09-17)
+
+Tarik asked what else the backoffice could have, then "hepsini yapalım". Each item is its own
+commit with its own tests; the decisions worth keeping:
+
+1. **Delete all test players** — a button, ADMIN only, confirmed by typing a phrase checked on the
+   server, keyed on `created_by_admin` alone so it cannot reach a real player.
+2. **Search, filter, pages of 50** — `AdminPlayerSearch` uses JdbcClient, not JPQL: three
+   independent optional conditions as nullable JPQL parameters is how Postgres ends up unable to
+   type an untyped null. Fixed SQL fragments, bound values. `_` in a search is escaped (LIKE's
+   wildcard is also legal in names). Trap met on the way: a Java text block strips its own leading
+   indentation, so `"…p" + where + """\n ORDER BY"""` became `pORDER BY` with no WHERE.
+3. **Rename a player** (both roles). Exposed a latent bug: `updated_at` doubles as "last seen" and
+   the trigger moved it on *every* UPDATE, so an operator's change made a player look active. **V7**
+   lets a transaction opt out: `set_config('app.preserve_updated_at','on', true)` (transaction-local,
+   so it cannot leak through the connection pool). Used by rename, suspension and IP retention.
+4. **Overview page** (the new landing page). Test players excluded from every figure. Says outright
+   that "active" = a sign-in in the window and that the server cannot measure play (no run history,
+   D12). Charts are HTML+CSS, one hue, hover titles, a table view — rendered and looked at before
+   shipping.
+5. **Audit filter + CSV export.** Reads moved to `AdminAuditSearch` (SELECT-only); the writing
+   repository shrank to `save` + `count`, which its reflection test enforces. CSV quotes every cell
+   and neutralises a leading `= + - @` — the actor of a refused sign-in is whatever a stranger typed,
+   and would open as a live formula. The export itself is audited.
+6. **IP retention, 90 days** (`privacy/IpRetention`). Runs at every start *and* daily, because the
+   container scales to zero and a sleeping container does not run a 03:17 job. Must set the V7 flag,
+   or clearing an address would mark exactly the longest-absent players as seen today.
+7. **Session epoch (V8).** A password change — or an administrator's reset — raises
+   `admin_user.session_epoch`; `AdminSessionGuard` signs out any session holding an older one. The
+   session that made the change is handed the new epoch and survives. Closes the "end other sessions
+   on a password change" open item.
+8. **Two-factor sign-in (V9).** TOTP written in-house (~40 lines) and checked against RFC 6238's own
+   vectors rather than a dependency. Opt-in per account — with one administrator, mandatory 2FA plus a
+   lost phone is a locked backoffice. Secret kept in the session until a code from it verifies; a code
+   works once (`totp_last_step`); 8 BCrypt-hashed recovery codes claimed with a conditional UPDATE;
+   `/admin/2fa` rate-limited; another ADMIN can remove it (ends that account's sessions). Stored
+   readable, with V9 explaining why encryption beside the credentials would add little.
+   Test trap: updating a row with JdbcClient inside a `@Transactional` test leaves the JPA
+   persistence context holding the old entity — the service then reads the stale value.
+9. **Announcement** — one message, info/warning, 280 chars, `GET /v1/announcement` public (most
+   needed when sign-in is broken), 204 when none, cached a minute. **V10 `app_setting`** (key → JSON
+   document) holds it and item 11.
+10. **Suspension (V11)** — keeps the account and refuses it: token → 403 `account_suspended` + reason
+    (checked *after* the secret, so a wrong secret stays 401 and reveals nothing), submissions refused,
+    scores off the public board and out of everyone else's rank. Both roles, reason required,
+    reversible, audited. A token issued before the suspension keeps its hour.
+11. **Remote game settings** — a closed list (`GameTunable`), each with hard bounds, blank = the game's
+    own value, all-or-nothing saves, audited old → new. `GET /v1/config` returns only overrides and
+    re-checks them on the way out. The game copies values when a run starts, so a change applies from
+    the next run.
+
+Game side (game repo): `GameContent` + `MenuNotice` (menu banner), `AccountStatus` (suspension),
+`RemoteConfig` (overrides, PlayerPrefs cache, read in `SpawnDirector`, `UpgradeService`,
+`RelicDropper`, `LevelSystem`). All network calls still happen only with cloud sync on.
+
 ## Open / next
 
 *Priority order.*
@@ -1041,10 +1096,9 @@ invent a row; that comment now says why this changed.
    stays invisible on a developer's machine either way.
 2. **Remove test players before launch.** `DELETE FROM player_profile WHERE created_by_admin`
    takes their scores with them (cascade). D34.
-3. **IP retention.** `last_ip` is personal data, stored deliberately; it needs a purpose and
-   a "delete IPs older than N days" job before this is public.
-4. **Pagination** — the board is capped at 100 rows and there is no `page`. Fine now,
-   wrong the day there are more players than that.
+3. ~~**IP retention.**~~ — **done 2026-09-17**, 90 days, `privacy/IpRetention` (D35 #6).
+4. **Pagination of the public board** — capped at 100 rows, no `page`. (The backoffice player
+   list is paged since D35 #2.)
 5. ~~**Least-privilege DB roles**~~ — **done 2026-09-10** (`b8d6e4d`). See F19.
 6. ~~**Azure deploy**~~ — **live 2026-09-10.**
    `https://spacesurvivors-api.salmonmeadow-a79134b3.italynorth.azurecontainerapps.io`
@@ -1063,9 +1117,8 @@ invent a row; that comment now says why this changed.
    so still cheap to add. `docs/firebase-setup.md` (from the scrapped repo) needs rewriting.
 8. ~~**Backoffice**~~ — **live 2026-09-11**, five screens. See the section above. ~~A real audit
    table instead of log lines~~ — **done the same day** (D28). ~~A second administrator account~~
-   — **roles, accounts and save editing done 2026-09-17** (D32, D33). Still open within it: search
-   and pagination once the player list outgrows a screen, and ending *other* sessions of the same
-   account when its password changes (disable and role change already end them).
+   — **roles, accounts and save editing done 2026-09-17** (D32, D33). Search, paging, other-session
+   ending, 2FA, suspension, announcements and remote settings all **done 2026-09-17** (D35).
 
 ## Local run
 
