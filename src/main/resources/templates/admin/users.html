@@ -54,6 +54,7 @@
                         <span class="pill off" th:unless="${a.enabled}">disabled</span>
                         <span class="pill" th:if="${a.enabled and a.mustChangePassword}">password pending</span>
                         <span class="muted" th:if="${a.enabled and !a.mustChangePassword}">active</span>
+                        <span class="pill" th:if="${a.twoFactor}">2FA</span>
                     </td>
                     <td class="muted" th:text="${a.created}">—</td>
                     <td class="muted" th:text="${a.lastSignIn}">—</td>
@@ -75,6 +76,10 @@
                         </form>
                         <form th:action="@{'/admin/users/' + ${a.id} + '/password'}" method="post">
                             <button type="submit" class="small">Reset password</button>
+                        </form>
+                        <!-- The lost-phone path. Ends that account's sessions too. -->
+                        <form th:if="${a.twoFactor}" th:action="@{'/admin/users/' + ${a.id} + '/two-factor/reset'}" method="post">
+                            <button type="submit" class="small">Remove 2FA</button>
                         </form>
                     </td>
                     <td th:if="${a.username.equalsIgnoreCase(admin)}"></td>

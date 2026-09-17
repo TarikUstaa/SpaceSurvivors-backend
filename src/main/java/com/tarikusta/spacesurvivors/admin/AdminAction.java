@@ -62,6 +62,24 @@ public enum AdminAction {
      */
     PROGRESS_EDITED,
 
+    /** An account turned two-factor sign-in on for itself. */
+    TWO_FACTOR_ENABLED,
+
+    /** An account turned two-factor sign-in off for itself, proving both factors to do it. */
+    TWO_FACTOR_DISABLED,
+
+    /** An administrator removed another account's two-factor — the lost-phone path. */
+    TWO_FACTOR_RESET,
+
+    /**
+     * The password was right and the second factor was not. Worth more attention than a plain
+     * refused sign-in: whoever did this already has the password.
+     */
+    TWO_FACTOR_FAILED,
+
+    /** A one-time recovery code completed a sign-in. The owner has fewer left, and lost a device. */
+    RECOVERY_CODE_USED,
+
     /** A backoffice account was created, with a temporary password its owner must replace. */
     ACCOUNT_CREATED,
 

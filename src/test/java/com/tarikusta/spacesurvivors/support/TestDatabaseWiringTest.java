@@ -74,7 +74,7 @@ class TestDatabaseWiringTest {
         // adding a migration should fail this once, so whoever adds it says out loud that the
         // schema changed. A "greater than" check would let a migration appear — or quietly
         // stop being applied — with nothing to show for it.
-        assertThat(applied).hasSize(8);
+        assertThat(applied).hasSize(9);
         assertThat(applied.getFirst()).contains("init");
         assertThat(applied.get(1)).contains("device_secret");
         assertThat(applied.get(2)).contains("admin_user");
@@ -82,7 +82,8 @@ class TestDatabaseWiringTest {
         assertThat(applied.get(4)).contains("admin_roles");
         assertThat(applied.get(5)).contains("admin_test_players");
         assertThat(applied.get(6)).contains("preserve_last_seen");
-        assertThat(applied.getLast()).contains("admin_session_epoch");
+        assertThat(applied.get(7)).contains("admin_session_epoch");
+        assertThat(applied.getLast()).contains("admin_two_factor");
     }
 
     @Test

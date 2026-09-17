@@ -46,7 +46,17 @@ enum RateLimitedEndpoint {
      * has to live out here, ahead of the security chain: there is no controller to put it
      * in.</p>
      */
-    ADMIN_LOGIN("/admin/login", Audience.BROWSER, RateLimitProperties::adminCapacity);
+    ADMIN_LOGIN("/admin/login", Audience.BROWSER, RateLimitProperties::adminCapacity),
+
+    /**
+     * The second step of a backoffice sign-in.
+     *
+     * <p>A six-digit code is a million possibilities, and each attempt checks three of them (the
+     * drift window) — so unlimited attempts would find one in hours. At the sign-in form's rate it
+     * is out of reach. Whoever reaches this page already has the password, which is the reason to
+     * be at least as strict here as there.</p>
+     */
+    ADMIN_TWO_FACTOR("/admin/2fa", Audience.BROWSER, RateLimitProperties::adminCapacity);
 
     /**
      * Who is on the other end, which is the only thing that differs about being refused.

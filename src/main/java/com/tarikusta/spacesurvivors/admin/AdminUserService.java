@@ -93,22 +93,26 @@ public class AdminUserService {
 
     /** One row of the users page, with the times already formatted — see AdminAuditEntry.when(). */
     public record AccountRow(UUID id, String username, String role, boolean enabled,
-                             boolean mustChangePassword, String created, String lastSignIn) {
+                             boolean mustChangePassword, boolean twoFactor, String created,
+                             String lastSignIn) {
     }
 
     private final AdminUserRepository admins;
     private final PasswordEncoder passwordEncoder;
     private final AdminAudit audit;
+    private final AdminTwoFactorService twoFactor;
     private final int passwordLength;
     private final SecureRandom random = new SecureRandom();
 
     public AdminUserService(AdminUserRepository admins,
                             PasswordEncoder passwordEncoder,
                             AdminAudit audit,
+                            AdminTwoFactorService twoFactor,
                             @Value("${app.admin.min-password-length:12}") int minPassword) {
         this.admins = admins;
         this.passwordEncoder = passwordEncoder;
         this.audit = audit;
+        this.twoFactor = twoFactor;
         // Never shorter than the rule every other password here has to meet.
         this.passwordLength = Math.max(16, minPassword);
     }
@@ -117,7 +121,7 @@ public class AdminUserService {
     public List<AccountRow> accounts() {
         return admins.findAllByOrderByCreatedAtAsc().stream()
                 .map(a -> new AccountRow(a.getAdminId(), a.getUsername(), a.getRole(),
-                        a.isEnabled(), a.isMustChangePassword(),
+                        a.isEnabled(), a.isMustChangePassword(), a.hasTwoFactor(),
                         format(a.getCreatedAt()), format(a.getLastLoginAt())))
                 .toList();
     }
@@ -213,6 +217,22 @@ public class AdminUserService {
             audit.accountPasswordReset(actor, account.getUsername(), callerIp);
             log.info("admin '{}' reset the password of '{}'", actor, account.getUsername());
             return new Result(Outcome.DONE, account.getUsername(), temporary);
+        });
+    }
+
+    /**
+     * Remove another account's two-factor — for somebody who lost their phone and their recovery
+     * codes. Their sessions end with it. Not for your own account: that is the security page,
+     * which asks for both factors.
+     */
+    @Transactional
+    public Result resetTwoFactor(String actor, UUID accountId, String callerIp) {
+        return onSomebodyElse(actor, accountId, account -> {
+            if (!account.hasTwoFactor()) {
+                return Result.of(Outcome.UNCHANGED, account.getUsername());
+            }
+            twoFactor.reset(actor, account, callerIp);
+            return Result.of(Outcome.DONE, account.getUsername());
         });
     }
 

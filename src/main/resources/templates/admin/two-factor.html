@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Two-factor · SpaceSurvivors backoffice</title>
+    <link rel="stylesheet" th:href="@{/admin/assets/admin.css}">
+</head>
+<body>
+<div class="signin">
+    <div class="card">
+        <h1>One more step</h1>
+        <p class="subtitle">Enter the six-digit code from your authenticator app, or one of your recovery codes.</p>
+
+        <p class="notice error" th:if="${param.error}">That code did not work. Codes change every 30 seconds, and each works once.</p>
+        <!-- The rate limiter redirects here with ?throttled — it has no other way to say so. -->
+        <p class="notice warn" th:if="${param.throttled}">Too many attempts. Wait a minute and try again.</p>
+
+        <form th:action="@{/admin/2fa}" method="post">
+            <div class="field">
+                <label for="code">Code</label>
+                <!-- one-time-code lets a phone offer the code straight from a notification. -->
+                <input type="text" id="code" name="code" inputmode="numeric" autocomplete="one-time-code"
+                       maxlength="12" autofocus required>
+            </div>
+            <button type="submit" class="primary">Continue</button>
+        </form>
+        <form th:action="@{/admin/logout}" method="post" style="margin-top: 0.75rem">
+            <button type="submit" class="linkbutton">Cancel and sign out</button>
+        </form>
+    </div>
+</div>
+</body>
+</html>

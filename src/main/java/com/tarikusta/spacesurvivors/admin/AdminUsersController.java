@@ -84,6 +84,15 @@ public class AdminUsersController {
         return "redirect:/admin/users";
     }
 
+    @PostMapping("/{accountId}/two-factor/reset")
+    public String resetTwoFactor(@PathVariable UUID accountId,
+                                 RedirectAttributes redirect, Authentication authentication,
+                                 HttpServletRequest request) {
+        report(users.resetTwoFactor(authentication.getName(), accountId,
+                ClientAddress.of(request)), "Removed two-factor sign-in from", redirect);
+        return "redirect:/admin/users";
+    }
+
     /** One switch for every action, so the sentences for the shared refusals are written once. */
     private static void report(AdminUserService.Result result, String verb,
                                RedirectAttributes redirect) {

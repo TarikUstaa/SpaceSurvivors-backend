@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Security · SpaceSurvivors backoffice</title>
+    <link rel="stylesheet" th:href="@{/admin/assets/admin.css}">
+</head>
+<body>
+
+<header th:replace="~{admin/fragments :: topbar('password', ${admin})}"></header>
+
+<main class="narrow">
+    <p class="crumb"><a th:href="@{/admin/password}">← Password</a></p>
+    <h1>Two-factor sign-in</h1>
+    <p class="subtitle">
+        A code from an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password…)
+        on top of your password.
+    </p>
+
+    <div th:replace="~{admin/fragments :: flash}"></div>
+
+    <!-- Shown once, from a flash attribute: refreshing the page loses them. -->
+    <section class="panel issued" th:if="${recoveryCodes}">
+        <h2>Your recovery codes</h2>
+        <p class="muted small">
+            Each one signs you in once if you lose your phone. Store them somewhere that is not the
+            phone — a password manager, or on paper. They will not be shown again.
+        </p>
+        <ul class="codes">
+            <li th:each="c : ${recoveryCodes}"><code th:text="${c}">abcd-efgh</code></li>
+        </ul>
+    </section>
+
+    <!-- ── on ─────────────────────────────────────────────────────────────── -->
+    <section class="panel" th:if="${status.enabled}">
+        <h2>On</h2>
+        <p><span th:text="${status.remainingRecoveryCodes}">8</span> unused recovery codes left.</p>
+        <h3>Turn off</h3>
+        <form th:action="@{/admin/security/two-factor/disable}" method="post">
+            <div class="field">
+                <label for="dPassword">Password</label>
+                <input type="password" id="dPassword" name="currentPassword" autocomplete="current-password" required>
+            </div>
+            <div class="field">
+                <label for="dCode">Code from the app</label>
+                <input type="text" id="dCode" name="code" inputmode="numeric" autocomplete="one-time-code" required>
+            </div>
+            <button type="submit" class="danger solid">Turn off two-factor</button>
+        </form>
+        <p class="muted small">
+            Lost the phone? Sign in with a recovery code, or ask another administrator to remove
+            two-factor from your account on the Users page.
+        </p>
+    </section>
+
+    <!-- ── off, not started ───────────────────────────────────────────────── -->
+    <section class="panel" th:if="${!status.enabled and enrollment == null}">
+        <h2>Off</h2>
+        <form th:action="@{/admin/security/two-factor/begin}" method="post">
+            <button type="submit" class="primary compact">Set up two-factor</button>
+        </form>
+    </section>
+
+    <!-- ── off, enrolling ─────────────────────────────────────────────────── -->
+    <section class="panel" th:if="${!status.enabled and enrollment != null}">
+        <h2>Set up</h2>
+        <ol class="steps">
+            <li>In your authenticator app, add an account and choose to enter a key by hand.</li>
+            <li>
+                Account: <strong th:text="${admin}">admin</strong>, key:
+                <code class="secret" th:text="${enrollment.secret}">ABCDEF</code>
+                (time-based). On a phone you can also
+                <a th:href="${enrollment.uri}">open it in the app</a>.
+            </li>
+            <li>Type the code the app now shows, with your password, below.</li>
+        </ol>
+        <form th:action="@{/admin/security/two-factor/enable}" method="post">
+            <div class="field">
+                <label for="ePassword">Password</label>
+                <input type="password" id="ePassword" name="currentPassword" autocomplete="current-password" required>
+            </div>
+            <div class="field">
+                <label for="eCode">Code from the app</label>
+                <input type="text" id="eCode" name="code" inputmode="numeric" autocomplete="one-time-code" required>
+            </div>
+            <button type="submit" class="primary compact">Turn on</button>
+        </form>
+        <form th:action="@{/admin/security/two-factor/cancel}" method="post" style="margin-top: 0.5rem">
+            <button type="submit" class="linkbutton">Cancel</button>
+        </form>
+        <p class="muted small">
+            Nothing is saved until the code checks out, so a mistake here cannot lock you out.
+        </p>
+    </section>
+</main>
+
+</body>
+</html>

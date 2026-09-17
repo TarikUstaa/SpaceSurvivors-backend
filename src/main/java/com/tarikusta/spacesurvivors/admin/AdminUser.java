@@ -61,6 +61,14 @@ public class AdminUser {
     @Column(name = "session_epoch", nullable = false)
     private int sessionEpoch;
 
+    /** Base32 TOTP secret, or null when two-factor is off. See V9__admin_two_factor.sql. */
+    @Column(name = "totp_secret")
+    private String totpSecret;
+
+    /** The 30-second window of the last code accepted; a code must be from a later one. */
+    @Column(name = "totp_last_step")
+    private Long totpLastStep;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
@@ -137,6 +145,28 @@ public class AdminUser {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public boolean hasTwoFactor() {
+        return totpSecret != null;
+    }
+
+    public String getTotpSecret() {
+        return totpSecret;
+    }
+
+    public Long getTotpLastStep() {
+        return totpLastStep;
+    }
+
+    /** Turn two-factor on with this secret, or off with null. Resets the replay guard either way. */
+    public void setTotpSecret(String totpSecret) {
+        this.totpSecret = totpSecret;
+        this.totpLastStep = null;
+    }
+
+    public void setTotpLastStep(Long totpLastStep) {
+        this.totpLastStep = totpLastStep;
     }
 
     public int getSessionEpoch() {

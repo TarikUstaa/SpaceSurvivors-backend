@@ -402,3 +402,9 @@ form.search input[type="search"] { min-width: 18rem; max-width: 100%; }
 .hbar-value { font-size: 0.85rem; color: var(--ink-soft); text-align: right; font-variant-numeric: tabular-nums; }
 
 .pill.warn-state { background: var(--bad-soft); color: var(--bad); }
+
+/* ── two-factor (2026-09-17) ───────────────────────────────────────────────────────── */
+.codes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.4rem 1rem; padding: 0; list-style: none; }
+.codes code { font-size: 1.05rem; letter-spacing: 0.05em; user-select: all; }
+.steps { padding-left: 1.2rem; line-height: 1.6; }
+code.secret { word-break: break-all; user-select: all; font-size: 0.95rem; }

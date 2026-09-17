@@ -207,18 +207,28 @@ public class AdminSecurityConfig {
                                             HttpServletResponse response,
                                             Authentication authentication)
                 throws IOException, ServletException {
-            admins.findByUsernameIgnoreCase(authentication.getName())
-                    .ifPresent(admin -> {
-                        // The session remembers which epoch it signed in under; AdminSessionGuard
-                        // ends it once the account's epoch moves on (V8).
-                        request.getSession().setAttribute(AdminSessionGuard.EPOCH_ATTRIBUTE,
-                                admin.getSessionEpoch());
-                        admin.setLastLoginAt(Instant.now());
-                        // Saved explicitly: this runs outside any transaction of ours, so
-                        // there is no persistence context that would flush the change on
-                        // its own. The repository's own save() supplies the transaction.
-                        admins.save(admin);
-                    });
+            AdminUser admin = admins.findByUsernameIgnoreCase(authentication.getName()).orElse(null);
+            if (admin != null) {
+                // The session remembers which epoch it signed in under; AdminSessionGuard ends it
+                // once the account's epoch moves on (V8).
+                request.getSession().setAttribute(AdminSessionGuard.EPOCH_ATTRIBUTE,
+                        admin.getSessionEpoch());
+
+                if (admin.hasTwoFactor()) {
+                    // Half signed in: the password was right. AdminSessionGuard now allows this
+                    // session nowhere but the code form, and the sign-in is recorded — and
+                    // last_login_at stamped — only when the second step passes.
+                    request.getSession().setAttribute(AdminSessionGuard.TWO_FACTOR_PENDING, true);
+                    response.sendRedirect(request.getContextPath() + "/admin/2fa");
+                    return;
+                }
+
+                admin.setLastLoginAt(Instant.now());
+                // Saved explicitly: this runs outside any transaction of ours, so there is no
+                // persistence context that would flush the change on its own. The repository's
+                // own save() supplies the transaction.
+                admins.save(admin);
+            }
 
             // last_login_at holds the most recent sign-in; the audit table holds all of them.
             // Both, because one answers "is this account still in use" at a glance and the

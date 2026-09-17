@@ -96,6 +96,37 @@ public class AdminAudit {
      * Not one of the destructive writes, and not contained like the sign-in ones either: an export
      * that cannot be recorded should fail rather than hand the file over unrecorded.
      */
+    public void twoFactorEnabled(String actor, String callerIp) {
+        write(actor, AdminAction.TWO_FACTOR_ENABLED, actor, "turned on two-factor sign-in", callerIp);
+    }
+
+    public void twoFactorDisabled(String actor, String callerIp) {
+        write(actor, AdminAction.TWO_FACTOR_DISABLED, actor, "turned off two-factor sign-in", callerIp);
+    }
+
+    public void twoFactorReset(String actor, String username, String callerIp) {
+        write(actor, AdminAction.TWO_FACTOR_RESET, username,
+                "removed two-factor sign-in from '" + username + "'", callerIp);
+    }
+
+    public void recoveryCodeUsed(String actor, int remaining, String callerIp) {
+        write(actor, AdminAction.RECOVERY_CODE_USED, actor,
+                "signed in with a recovery code (" + remaining + " left)", callerIp);
+    }
+
+    /**
+     * Written quietly, like the other sign-in rows: a broken audit table must not become a way to
+     * lock somebody out of the second step either.
+     */
+    public void twoFactorFailed(String actor, String callerIp) {
+        quietly(() -> write(actor, AdminAction.TWO_FACTOR_FAILED, actor,
+                "second factor refused", callerIp));
+    }
+
+    public void signedInWithTwoFactor(String actor, String callerIp) {
+        quietly(() -> write(actor, AdminAction.SIGNED_IN, null, "signed in (two-factor)", callerIp));
+    }
+
     public void auditExported(String actor, int rows, boolean truncated, String filter,
                               String callerIp) {
         write(actor, AdminAction.AUDIT_EXPORTED, null,

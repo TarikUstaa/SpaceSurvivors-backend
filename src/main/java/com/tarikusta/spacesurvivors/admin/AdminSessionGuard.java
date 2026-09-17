@@ -36,6 +36,8 @@ import java.util.stream.Collectors;
  *       changed should notice that they did;</li>
  *   <li>the account's password changed since this session signed in (the session epoch, V8) →
  *       signed out;</li>
+ *   <li>the password was right but the second factor has not been given yet → every page except
+ *       the code form redirects to it;</li>
  *   <li>the account still has a password somebody else chose → every page except the password
  *       form redirects to it.</li>
  * </ul>
@@ -59,6 +61,15 @@ final class AdminSessionGuard extends OncePerRequestFilter {
 
     /** The session attribute holding the account's session epoch as of sign-in (V8). */
     static final String EPOCH_ATTRIBUTE = "admin.sessionEpoch";
+
+    /**
+     * Set at sign-in for an account with two-factor, removed when the second step passes. While it
+     * is set the session is authenticated — the password was right — and is allowed nowhere but the
+     * code form.
+     */
+    static final String TWO_FACTOR_PENDING = "admin.twoFactorPending";
+
+    private static final Set<String> TWO_FACTOR_FLOW = Set.of("/admin/2fa", "/admin/logout");
 
     /** Reachable while a password change is being forced, or there would be no way to do it. */
     private static final Set<String> PASSWORD_FLOW = Set.of("/admin/password", "/admin/logout");
@@ -97,6 +108,13 @@ final class AdminSessionGuard extends OncePerRequestFilter {
                             : "had its password changed");
             endSession(request);
             response.sendRedirect(request.getContextPath() + "/admin/login?revoked");
+            return;
+        }
+
+        HttpSession session = request.getSession(false);
+        if (session != null && Boolean.TRUE.equals(session.getAttribute(TWO_FACTOR_PENDING))
+                && !TWO_FACTOR_FLOW.contains(pathOf(request))) {
+            response.sendRedirect(request.getContextPath() + "/admin/2fa");
             return;
         }
 
