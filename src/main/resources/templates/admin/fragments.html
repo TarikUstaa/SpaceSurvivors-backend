@@ -16,6 +16,8 @@
 <header class="topbar" th:fragment="topbar(active, admin)">
     <span class="brand">SpaceSurvivors</span>
     <nav>
+        <a th:href="@{/admin/overview}"
+           th:classappend="${active == 'overview'} ? 'active'">Overview</a>
         <a th:href="@{/admin/players}"
            th:classappend="${active == 'players'} ? 'active'">Players</a>
         <a th:href="@{/admin/leaderboard}"

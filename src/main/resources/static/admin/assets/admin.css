@@ -372,3 +372,33 @@ form.search { margin: 0.5rem 0 1rem; }
 form.search input[type="search"] { min-width: 18rem; max-width: 100%; }
 .field.inline select { font: inherit; padding: 0.45rem 0.5rem; border: 1px solid var(--rule); border-radius: 4px; background: var(--ground); color: var(--ink); }
 .pager { display: flex; gap: 1rem; align-items: center; justify-content: center; margin: 1rem 0; }
+
+/* ── overview (2026-09-17) ─────────────────────────────────────────────────────────── */
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.75rem; margin: 1rem 0 0.4rem; }
+.kpi { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 0.8rem 0.9rem; display: flex; flex-direction: column; gap: 0.25rem; }
+.kpi-label { font-size: 0.8rem; color: var(--ink-soft); }
+/* Proportional figures for a standalone value; tabular-nums only for columns of numbers. */
+.kpi-value { font-size: 1.7rem; font-weight: 600; color: var(--ink); line-height: 1.1; }
+
+.overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 1rem; margin-top: 1rem; }
+.overview-grid .panel { margin: 0; }
+
+/* Column chart: bars no thicker than 24px, a 2px surface gap between them, 4px rounded data end,
+   square at the baseline, one hairline baseline. */
+.columns { display: flex; align-items: flex-end; gap: 2px; height: 8rem; border-bottom: 1px solid var(--rule); padding-top: 0.5rem; }
+.column { flex: 1 1 0; height: 100%; display: flex; align-items: flex-end; justify-content: center; cursor: default; }
+.column-bar { display: block; width: 100%; max-width: 24px; background: var(--accent); border-radius: 4px 4px 0 0; }
+/* The hit target is the whole column, not the (possibly tiny) bar. */
+.column:hover .column-bar { opacity: 0.8; }
+.column-axis { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--ink-soft); margin: 0.3rem 0 0.6rem; }
+
+/* Ranked horizontal bars: label, track, value in ink (never the bar colour). */
+.hbars { display: flex; flex-direction: column; gap: 0.45rem; margin: 0.6rem 0; }
+.hbar { display: grid; grid-template-columns: 4.5rem 1fr 3rem; align-items: center; gap: 0.6rem; }
+.hbar-label { font-size: 0.85rem; color: var(--ink); }
+.hbar-track { display: block; height: 14px; }
+.hbar-fill { display: block; height: 100%; max-height: 24px; background: var(--accent); border-radius: 0 4px 4px 0; }
+.hbar-value { font-size: 0.85rem; color: var(--ink-soft); text-align: right; font-variant-numeric: tabular-nums; }
+
+.pill.warn-state { background: var(--bad-soft); color: var(--bad); }

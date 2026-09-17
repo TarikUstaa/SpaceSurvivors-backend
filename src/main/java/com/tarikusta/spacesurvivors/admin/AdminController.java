@@ -65,7 +65,7 @@ public class AdminController {
     /** {@code /admin} on its own is a convenience, not a page. */
     @GetMapping
     public String home() {
-        return "redirect:/admin/players";
+        return "redirect:/admin/overview";
     }
 
     /**

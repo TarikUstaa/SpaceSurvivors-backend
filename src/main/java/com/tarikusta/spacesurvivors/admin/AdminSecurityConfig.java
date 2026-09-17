@@ -199,7 +199,7 @@ public class AdminSecurityConfig {
         AdminLoginRecorder(AdminUserRepository admins, AdminAudit audit) {
             this.admins = admins;
             this.audit = audit;
-            setDefaultTargetUrl("/admin/players");
+            setDefaultTargetUrl("/admin/overview");
         }
 
         @Override

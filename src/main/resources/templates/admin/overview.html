@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Overview · SpaceSurvivors backoffice</title>
+    <link rel="stylesheet" th:href="@{/admin/assets/admin.css}">
+</head>
+<body>
+
+<header th:replace="~{admin/fragments :: topbar('overview', ${admin})}"></header>
+
+<main>
+    <h1>Overview</h1>
+    <p class="subtitle">Real players only — test players are counted on their own. Days in UTC.</p>
+
+    <div th:replace="~{admin/fragments :: flash}"></div>
+
+    <!-- KPI row: a handful of headline numbers is tiles, not a chart. -->
+    <section class="kpis">
+        <div class="kpi">
+            <span class="kpi-label">Players</span>
+            <span class="kpi-value" th:text="${#numbers.formatInteger(d.players.real, 1, 'COMMA')}">0</span>
+        </div>
+        <div class="kpi">
+            <span class="kpi-label">New in 7 days</span>
+            <span class="kpi-value" th:text="${d.players.newWeek}">0</span>
+        </div>
+        <div class="kpi">
+            <span class="kpi-label">Active in 24 hours</span>
+            <span class="kpi-value" th:text="${d.players.activeDay}">0</span>
+        </div>
+        <div class="kpi">
+            <span class="kpi-label">Active in 7 days</span>
+            <span class="kpi-value" th:text="${d.players.activeWeek}">0</span>
+        </div>
+        <div class="kpi">
+            <span class="kpi-label">With a cloud save</span>
+            <span class="kpi-value" th:text="${d.players.withSave}">0</span>
+        </div>
+        <div class="kpi">
+            <span class="kpi-label">Test players</span>
+            <span class="kpi-value muted" th:text="${d.players.test}">0</span>
+        </div>
+    </section>
+    <p class="muted small">
+        "Active" is a sign-in within the window. The server keeps best scores and saves, not a
+        history of runs, so it cannot say how much anyone played.
+    </p>
+
+    <div class="overview-grid">
+        <section class="panel">
+            <h2>New players, last 14 days</h2>
+            <p class="muted small"><span th:text="${d.signupsInWindow}">0</span> in total</p>
+            <!--
+              One series, so one hue and no legend; the title names it. Every column has a hover
+              title with its exact value, and the table below the chart is the same data for
+              anyone who cannot read the chart.
+            -->
+            <div class="columns" role="img"
+                 th:attr="aria-label=|New players per day for the last 14 days, ${d.signupsInWindow} in total|">
+                <div class="column" th:each="day : ${d.signups}"
+                     th:title="|${day.label()}: ${day.count} new|">
+                    <span class="column-bar" th:style="|height: ${day.percent}%|"></span>
+                </div>
+            </div>
+            <div class="column-axis">
+                <span th:text="${d.signups[0].label()}">1 Sep</span>
+                <span th:text="${d.signups[d.signups.size() - 1].label()}">14 Sep</span>
+            </div>
+            <details>
+                <summary>As a table</summary>
+                <table>
+                    <thead><tr><th>Day</th><th class="num">New</th></tr></thead>
+                    <tbody>
+                    <tr th:each="day : ${d.signups}">
+                        <td th:text="${day.label()}">1 Sep</td>
+                        <td class="num" th:text="${day.count}">0</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </details>
+        </section>
+
+        <section class="panel">
+            <h2>Countries</h2>
+            <p class="muted" th:if="${d.countries.isEmpty()}">No players yet.</p>
+            <!-- Ranked magnitude: horizontal bars, one hue, the value in ink beside each. -->
+            <div class="hbars" th:unless="${d.countries.isEmpty()}">
+                <div class="hbar" th:each="c : ${d.countries}" th:title="|${c.code}: ${c.count}|">
+                    <span class="hbar-label" th:text="${c.code}">TR</span>
+                    <span class="hbar-track"><span class="hbar-fill" th:style="|width: ${c.percent}%|"></span></span>
+                    <span class="hbar-value" th:text="${c.count}">0</span>
+                </div>
+            </div>
+            <p class="muted small">Top 8, from the sign-in address. "Unknown" is a private or unplaceable one.</p>
+        </section>
+
+        <section class="panel">
+            <h2>Leaderboard</h2>
+            <p class="muted" th:if="${d.modes.isEmpty()}">No real scores yet.</p>
+            <table th:unless="${d.modes.isEmpty()}">
+                <thead><tr><th>Mode</th><th class="num">Players on it</th><th class="num">Best time</th></tr></thead>
+                <tbody>
+                <tr th:each="m : ${d.modes}">
+                    <td class="name"><a th:href="@{/admin/leaderboard(mode=${m.mode})}" th:text="${m.mode}">mode</a></td>
+                    <td class="num" th:text="${m.entries}">0</td>
+                    <td class="num" th:text="${m.best()}">0:00</td>
+                </tr>
+                </tbody>
+            </table>
+            <p class="muted small" th:if="${d.testScores > 0}">
+                Plus <span th:text="${d.testScores}">0</span> hand-set test scores, not counted above.
+            </p>
+        </section>
+
+        <!-- ADMIN only, like the audit trail it summarises. -->
+        <section class="panel" th:if="${isAdmin}">
+            <h2>Backoffice, last 24 hours</h2>
+            <dl class="facts">
+                <div>
+                    <dt>Refused sign-ins</dt>
+                    <dd>
+                        <span th:text="${d.security.failedSignIns}">0</span>
+                        <!-- State carries an icon and a word, never colour alone. -->
+                        <span class="pill warn-state" th:if="${d.security.failedSignIns >= 5}">⚠ worth a look</span>
+                    </dd>
+                </div>
+                <div><dt>Changes made</dt><dd th:text="${d.security.actions}">0</dd></div>
+            </dl>
+            <p class="muted small"><a th:href="@{/admin/audit}">Open the audit trail →</a></p>
+        </section>
+    </div>
+</main>
+
+</body>
+</html>

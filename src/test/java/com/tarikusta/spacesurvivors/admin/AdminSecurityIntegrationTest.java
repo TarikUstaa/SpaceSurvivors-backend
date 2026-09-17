@@ -95,11 +95,11 @@ class AdminSecurityIntegrationTest {
     }
 
     @Test
-    @DisplayName("correct credentials sign in and land on the player list")
+    @DisplayName("correct credentials sign in and land on the overview")
     void signsIn() throws Exception {
         mvc.perform(formLogin("/admin/login").user(ADMIN).password(PASSWORD))
                 .andExpect(authenticated().withUsername(ADMIN).withRoles("ADMIN"))
-                .andExpect(redirectedUrl("/admin/players"));
+                .andExpect(redirectedUrl("/admin/overview"));
     }
 
     @Test

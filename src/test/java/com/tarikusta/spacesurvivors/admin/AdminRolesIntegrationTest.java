@@ -99,11 +99,11 @@ class AdminRolesIntegrationTest {
     // ── what SUPPORT does ──────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("SUPPORT signs in for real and lands on the player list")
+    @DisplayName("SUPPORT signs in for real and lands on the overview")
     void supportSignsIn() throws Exception {
         mvc.perform(formLogin("/admin/login").user(SUPPORT).password(SUPPORT_PASSWORD))
                 .andExpect(authenticated().withUsername(SUPPORT).withRoles("SUPPORT"))
-                .andExpect(redirectedUrl("/admin/players"));
+                .andExpect(redirectedUrl("/admin/overview"));
     }
 
     @Test
