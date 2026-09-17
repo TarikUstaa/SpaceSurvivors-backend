@@ -42,7 +42,7 @@ public class AdminDashboardService {
             DateTimeFormatter.ofPattern("d MMM", Locale.ROOT);
 
     public record Players(long real, long newWeek, long activeDay, long activeWeek,
-                          long withSave, long test) {
+                          long withSave, long test, long suspended) {
     }
 
     /**
@@ -99,11 +99,12 @@ public class AdminDashboardService {
                                count(*) FILTER (WHERE NOT created_by_admin AND updated_at > now() - interval '7 days')       AS active_week,
                                count(*) FILTER (WHERE NOT created_by_admin AND EXISTS
                                                (SELECT 1 FROM player_progress g WHERE g.player_id = p.player_id))  AS with_save,
-                               count(*) FILTER (WHERE created_by_admin)                                                AS test
+                               count(*) FILTER (WHERE created_by_admin)                                                AS test,
+                               count(*) FILTER (WHERE NOT created_by_admin AND suspended_at IS NOT NULL)               AS suspended
                           FROM player_profile p""")
                 .query((rs, n) -> new Players(rs.getLong("real"), rs.getLong("new_week"),
                         rs.getLong("active_day"), rs.getLong("active_week"),
-                        rs.getLong("with_save"), rs.getLong("test")))
+                        rs.getLong("with_save"), rs.getLong("test"), rs.getLong("suspended")))
                 .single();
     }
 

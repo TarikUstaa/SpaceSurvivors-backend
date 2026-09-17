@@ -81,6 +81,13 @@ public class PlayerProfile {
     @Column(name = "created_by_admin", insertable = false, updatable = false)
     private boolean createdByAdmin;
 
+    /** Set by an operator (V11). Read-only here: only the backoffice's own statement writes it. */
+    @Column(name = "suspended_at", insertable = false, updatable = false)
+    private Instant suspendedAt;
+
+    @Column(name = "suspension_reason", insertable = false, updatable = false)
+    private String suspensionReason;
+
     /** Set once by the database default and never touched again. */
     @Column(name = "first_login_date", insertable = false, updatable = false)
     private Instant firstLoginDate;
@@ -149,6 +156,14 @@ public class PlayerProfile {
 
     public void setDeviceSecretHash(String deviceSecretHash) {
         this.deviceSecretHash = deviceSecretHash;
+    }
+
+    public boolean isSuspended() {
+        return suspendedAt != null;
+    }
+
+    public String getSuspensionReason() {
+        return suspensionReason;
     }
 
     public boolean isCreatedByAdmin() {

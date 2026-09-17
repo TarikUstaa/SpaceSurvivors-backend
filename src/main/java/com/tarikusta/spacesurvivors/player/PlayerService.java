@@ -1,5 +1,6 @@
 package com.tarikusta.spacesurvivors.player;
 
+import com.tarikusta.spacesurvivors.exception.AccountSuspendedException;
 import com.tarikusta.spacesurvivors.exception.AlreadyTakenException;
 import com.tarikusta.spacesurvivors.exception.AuthenticationFailedException;
 import com.tarikusta.spacesurvivors.exception.InvalidInputException;
@@ -74,6 +75,12 @@ public class PlayerService {
             players.saveAndFlush(profile);
         } else if (!passwordEncoder.matches(rawSecret, storedHash)) {
             throw new AuthenticationFailedException("device id or secret is not recognised");
+        }
+
+        // Checked only after the secret, never before: a suspension tells the caller the account
+        // exists, which is fine to tell its holder and must not be told to anybody guessing ids.
+        if (profile.isSuspended()) {
+            throw new AccountSuspendedException(profile.getSuspensionReason());
         }
 
         // Authenticating is the natural "last seen": it happens once a session rather than

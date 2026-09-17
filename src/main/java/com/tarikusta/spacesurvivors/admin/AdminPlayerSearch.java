@@ -39,7 +39,8 @@ public class AdminPlayerSearch {
         REAL("Real players", "NOT p.created_by_admin"),
         TEST("Test players", "p.created_by_admin"),
         SAVED("With a cloud save", "EXISTS (SELECT 1 FROM player_progress g WHERE g.player_id = p.player_id)"),
-        UNSAVED("Without a cloud save", "NOT EXISTS (SELECT 1 FROM player_progress g WHERE g.player_id = p.player_id)");
+        UNSAVED("Without a cloud save", "NOT EXISTS (SELECT 1 FROM player_progress g WHERE g.player_id = p.player_id)"),
+        SUSPENDED("Suspended", "p.suspended_at IS NOT NULL");
 
         private final String label;
         private final String condition;
@@ -95,7 +96,8 @@ public class AdminPlayerSearch {
             SELECT p.player_id, p.display_name, p.country, p.first_login_date, p.updated_at,
                    (SELECT count(*) FROM leaderboard l WHERE l.player_id = p.player_id) AS board_entries,
                    (SELECT count(*) FROM player_progress g WHERE g.player_id = p.player_id) AS saves,
-                   p.created_by_admin
+                   p.created_by_admin,
+                   p.suspended_at IS NOT NULL AS suspended
               FROM player_profile p""";
 
     private final JdbcClient db;
@@ -166,7 +168,8 @@ public class AdminPlayerSearch {
                 instant(rs, "updated_at"),
                 rs.getLong("board_entries"),
                 rs.getLong("saves"),
-                rs.getBoolean("created_by_admin"));
+                rs.getBoolean("created_by_admin"),
+                rs.getBoolean("suspended"));
     }
 
     private static Instant instant(ResultSet rs, String column) throws SQLException {

@@ -46,6 +46,8 @@
                     <span th:text="${row.displayName}">Name</span>
                     <!-- Same label as the player list: a hand-set score must not pass for a real run. -->
                     <span class="pill test" th:if="${row.createdByAdmin}">TEST</span>
+                    <!-- Kept on this list so an operator can find it; hidden from the public board. -->
+                    <span class="pill off" th:if="${row.suspended}" title="Hidden from the public board">SUSPENDED</span>
                 </td>
                 <td class="num" th:text="${row.clock()}">0:00</td>
                 <td class="num" th:text="${row.kills}">0</td>

@@ -186,6 +186,32 @@ public class AdminController {
         return "redirect:/admin/players";
     }
 
+    @PostMapping("/players/{playerId}/suspend")
+    public String suspend(@PathVariable UUID playerId,
+                          @RequestParam(required = false) String reason,
+                          RedirectAttributes redirect, Authentication authentication,
+                          HttpServletRequest request) {
+        switch (players.suspend(authentication.getName(), playerId, reason, ClientAddress.of(request))) {
+            case SUSPENDED -> redirect.addFlashAttribute("message", "Suspended. The player's next "
+                    + "sign-in is refused with your reason, and their scores are off the board.");
+            case UPDATED -> redirect.addFlashAttribute("message", "Reason updated.");
+            case INVALID -> redirect.addFlashAttribute("warning", "Nothing changed — a reason of 1 to "
+                    + AdminPlayerService.MAX_SUSPENSION_REASON + " characters is required.");
+            default -> redirect.addFlashAttribute("warning", "Nothing changed.");
+        }
+        return "redirect:/admin/players/" + playerId;
+    }
+
+    @PostMapping("/players/{playerId}/unsuspend")
+    public String unsuspend(@PathVariable UUID playerId, RedirectAttributes redirect,
+                            Authentication authentication, HttpServletRequest request) {
+        switch (players.unsuspend(authentication.getName(), playerId, ClientAddress.of(request))) {
+            case LIFTED -> redirect.addFlashAttribute("message", "Suspension lifted.");
+            default -> redirect.addFlashAttribute("warning", "That player was not suspended.");
+        }
+        return "redirect:/admin/players/" + playerId;
+    }
+
     @PostMapping("/players/{playerId}/rename")
     public String rename(@PathVariable UUID playerId,
                          @RequestParam(required = false) String displayName,

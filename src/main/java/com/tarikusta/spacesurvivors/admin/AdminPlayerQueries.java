@@ -70,7 +70,8 @@ public interface AdminPlayerQueries extends Repository<PlayerProfile, UUID> {
             select new com.tarikusta.spacesurvivors.admin.AdminPlayerDetail(
                        p.playerId, p.displayName, p.country, p.lastIp,
                        p.firstLoginDate, p.updatedAt,
-                       g.version, g.updatedAt, g.progressData, p.createdByAdmin)
+                       g.version, g.updatedAt, g.progressData, p.createdByAdmin,
+                       p.suspendedAt, p.suspensionReason)
             from PlayerProfile p
             left join PlayerProgress g on g.playerId = p.playerId
             where p.playerId = :playerId
@@ -105,6 +106,27 @@ public interface AdminPlayerQueries extends Repository<PlayerProfile, UUID> {
 
     @Query("select count(p) from PlayerProfile p where p.createdByAdmin = true")
     long countTestPlayers();
+
+    /**
+     * Suspend — or, with a new reason, re-word an existing suspension without moving its date.
+     *
+     * @return 1 if the player exists
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            UPDATE player_profile
+               SET suspended_at = COALESCE(suspended_at, now()), suspension_reason = :reason
+             WHERE player_id = :id
+            """, nativeQuery = true)
+    int suspend(@Param("id") UUID playerId, @Param("reason") String reason);
+
+    /** @return 1 if a suspension was lifted, 0 if the player was not suspended */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            UPDATE player_profile SET suspended_at = NULL, suspension_reason = NULL
+             WHERE player_id = :id AND suspended_at IS NOT NULL
+            """, nativeQuery = true)
+    int unsuspend(@Param("id") UUID playerId);
 
     /**
      * Every test player at once, with their saves and scores (the database's cascade, as for a

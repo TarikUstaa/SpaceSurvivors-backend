@@ -20,6 +20,7 @@ import java.util.UUID;
  * @param boardEntries   how many leaderboard rows this player holds (0-2: one per mode)
  * @param saves          1 if a cloud save exists, 0 if the player has only ever authenticated
  * @param createdByAdmin a test player made in the backoffice, not a real device (V6)
+ * @param suspended      refused sign-in and hidden from the board by an operator (V11)
  */
 public record AdminPlayerRow(
         UUID playerId,
@@ -29,7 +30,8 @@ public record AdminPlayerRow(
         Instant updatedAt,
         Long boardEntries,
         Long saves,
-        boolean createdByAdmin) {
+        boolean createdByAdmin,
+        boolean suspended) {
 
     public boolean hasSave() {
         return saves != null && saves > 0;

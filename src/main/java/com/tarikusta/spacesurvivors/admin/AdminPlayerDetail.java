@@ -33,7 +33,18 @@ public record AdminPlayerDetail(
         Integer saveVersion,
         Instant saveUpdatedAt,
         String saveJson,
-        boolean createdByAdmin) {
+        boolean createdByAdmin,
+        Instant suspendedAt,
+        String suspensionReason) {
+
+    public boolean suspended() {
+        return suspendedAt != null;
+    }
+
+    public String suspendedOn() {
+        return suspendedAt == null ? "—" : MINUTE.format(suspendedAt);
+    }
+
 
     private static final DateTimeFormatter MINUTE =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")

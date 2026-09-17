@@ -70,6 +70,11 @@ public class AdminPlayerService {
     public record Created(Creation outcome, UUID playerId, String displayName, String problem) {
     }
 
+    public enum Suspension { SUSPENDED, UPDATED, LIFTED, NOT_SUSPENDED, INVALID }
+
+    /** The longest reason V11's CHECK allows — it is shown to the player, so it is kept short. */
+    public static final int MAX_SUSPENSION_REASON = 280;
+
     public enum Rename { RENAMED, UNCHANGED, INVALID, TAKEN }
 
     /** @param problem set only for {@link Rename#INVALID} */
@@ -193,6 +198,46 @@ public class AdminPlayerService {
         log.info("admin '{}' renamed player {} from '{}' to '{}'",
                 actor, playerId, player.displayName(), name);
         return new Renamed(Rename.RENAMED, player.displayName(), name, null);
+    }
+
+    /**
+     * Suspend a player, with a reason the game will show them.
+     *
+     * <p>A reason is required: a suspension the player cannot understand is a support ticket, and
+     * one the next operator cannot understand is a suspension nobody dares lift. Suspending an
+     * already suspended player re-words the reason and keeps the original date.</p>
+     *
+     * <p>Both roles, like renaming — it is moderation and it is reversible. Does not move "last
+     * seen" (V7).</p>
+     */
+    @Transactional
+    @PreAuthorize(AdminRole.IS_STAFF)
+    public Suspension suspend(String actor, UUID playerId, String reason, String callerIp) {
+        AdminPlayerDetail player = detail(playerId);
+        String text = reason == null ? "" : reason.replaceAll("\\s+", " ").trim();
+        if (text.isEmpty() || text.length() > MAX_SUSPENSION_REASON) {
+            return Suspension.INVALID;
+        }
+
+        players.preserveLastSeen();
+        players.suspend(playerId, text);
+
+        audit.playerSuspended(actor, playerId, player.displayName(), text, callerIp);
+        log.warn("admin '{}' suspended player {} ('{}')", actor, playerId, player.displayName());
+        return player.suspended() ? Suspension.UPDATED : Suspension.SUSPENDED;
+    }
+
+    @Transactional
+    @PreAuthorize(AdminRole.IS_STAFF)
+    public Suspension unsuspend(String actor, UUID playerId, String callerIp) {
+        AdminPlayerDetail player = detail(playerId);
+        players.preserveLastSeen();
+        if (players.unsuspend(playerId) == 0) {
+            return Suspension.NOT_SUSPENDED;
+        }
+        audit.playerUnsuspended(actor, playerId, player.displayName(), callerIp);
+        log.info("admin '{}' lifted the suspension of player {}", actor, playerId);
+        return Suspension.LIFTED;
     }
 
     /**

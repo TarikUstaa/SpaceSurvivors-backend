@@ -52,6 +52,12 @@ public enum AdminAction {
     /** The main-menu announcement was taken down. */
     ANNOUNCEMENT_CLEARED,
 
+    /** A player was suspended: refused sign-in and hidden from the board. The reason is in the summary. */
+    PLAYER_SUSPENDED,
+
+    /** A suspension was lifted. */
+    PLAYER_UNSUSPENDED,
+
     /** A player's display name was changed from the backoffice — usually a name report. */
     PLAYER_RENAMED,
 

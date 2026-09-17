@@ -93,6 +93,7 @@
                 <td class="name">
                     <a th:href="@{'/admin/players/' + ${p.playerId}}" th:text="${p.displayName}">Name</a>
                     <span class="pill test" th:if="${p.createdByAdmin}">TEST</span>
+                    <span class="pill off" th:if="${p.suspended}">SUSPENDED</span>
                 </td>
                 <td class="muted" th:text="${p.country} ?: '—'">—</td>
                 <td class="muted" th:text="${p.firstSeen()}">—</td>

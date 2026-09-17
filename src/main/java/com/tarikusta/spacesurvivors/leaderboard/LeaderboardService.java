@@ -1,5 +1,6 @@
 package com.tarikusta.spacesurvivors.leaderboard;
 
+import com.tarikusta.spacesurvivors.exception.AccountSuspendedException;
 import com.tarikusta.spacesurvivors.exception.RuleViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,6 +74,12 @@ public class LeaderboardService {
     public LeaderboardDtos.SubmitResult submit(UUID playerId, LeaderboardDtos.Submission run) {
         String mode = normaliseMode(run.mode());
         rejectImplausible(run);
+
+        // A token issued before the suspension can still reach this for up to an hour; the board
+        // closes at once regardless. See V11__player_suspension.sql.
+        if (board.isSuspended(playerId)) {
+            throw new AccountSuspendedException(null);
+        }
 
         // Narrow to float first: survived_seconds is a real column, so this is the value
         // that will actually be stored. Comparing the wider incoming double against a

@@ -41,7 +41,8 @@ public interface AdminLeaderboardQueries extends Repository<LeaderboardEntry, Le
     @Query("""
             SELECT new com.tarikusta.spacesurvivors.admin.AdminBoardRow(
                        e.playerId, p.displayName, e.mode, e.survivedSeconds, e.kills,
-                       e.reachedLevel, e.bossesDefeated, e.achievedAt, p.createdByAdmin)
+                       e.reachedLevel, e.bossesDefeated, e.achievedAt, p.createdByAdmin,
+                       (p.suspendedAt is not null))
               FROM LeaderboardEntry e
               JOIN PlayerProfile p ON p.playerId = e.playerId
              WHERE e.mode = :mode
@@ -53,7 +54,8 @@ public interface AdminLeaderboardQueries extends Repository<LeaderboardEntry, Le
     @Query("""
             SELECT new com.tarikusta.spacesurvivors.admin.AdminBoardRow(
                        e.playerId, p.displayName, e.mode, e.survivedSeconds, e.kills,
-                       e.reachedLevel, e.bossesDefeated, e.achievedAt, p.createdByAdmin)
+                       e.reachedLevel, e.bossesDefeated, e.achievedAt, p.createdByAdmin,
+                       (p.suspendedAt is not null))
               FROM LeaderboardEntry e
               JOIN PlayerProfile p ON p.playerId = e.playerId
              WHERE e.playerId = :playerId

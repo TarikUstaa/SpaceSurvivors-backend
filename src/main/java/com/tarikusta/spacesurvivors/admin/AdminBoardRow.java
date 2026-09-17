@@ -19,6 +19,7 @@ import java.util.UUID;
  *                       recognisable, because a suspicious run and the account that made it
  *                       usually appear within minutes of each other
  * @param createdByAdmin the row belongs to a test player (V6), so the score was set by hand
+ * @param suspended      the player is suspended (V11): still listed here, hidden from the public board
  */
 public record AdminBoardRow(
         UUID playerId,
@@ -29,7 +30,8 @@ public record AdminBoardRow(
         int reachedLevel,
         int bossesDefeated,
         Instant achievedAt,
-        boolean createdByAdmin) {
+        boolean createdByAdmin,
+        boolean suspended) {
 
     private static final DateTimeFormatter MINUTE =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")

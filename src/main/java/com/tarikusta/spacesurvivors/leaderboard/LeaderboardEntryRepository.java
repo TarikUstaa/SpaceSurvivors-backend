@@ -56,6 +56,7 @@ public interface LeaderboardEntryRepository
               FROM LeaderboardEntry e
               JOIN PlayerProfile p ON p.playerId = e.playerId
              WHERE e.mode = :mode
+               AND p.suspendedAt IS NULL
              ORDER BY e.survivedSeconds DESC, e.achievedAt ASC
             """)
     List<BoardRow> topEntries(@Param("mode") String mode, Pageable limit);
@@ -72,7 +73,9 @@ public interface LeaderboardEntryRepository
             SELECT me.survived_seconds AS seconds,
                    (SELECT count(*) + 1
                       FROM leaderboard o
+                      JOIN player_profile op ON op.player_id = o.player_id
                      WHERE o.mode = me.mode
+                       AND op.suspended_at IS NULL
                        AND (o.survived_seconds > me.survived_seconds
                             OR (o.survived_seconds = me.survived_seconds
                                 AND o.achieved_at < me.achieved_at))) AS rank
@@ -80,6 +83,10 @@ public interface LeaderboardEntryRepository
              WHERE me.player_id = :playerId AND me.mode = :mode
             """, nativeQuery = true)
     Optional<Standing> findStanding(@Param("playerId") UUID playerId, @Param("mode") String mode);
+
+    /** Whether an operator has suspended this player (V11). */
+    @Query("select count(p) > 0 from PlayerProfile p where p.playerId = :playerId and p.suspendedAt is not null")
+    boolean isSuspended(@Param("playerId") UUID playerId);
 
     /**
      * Write the run as this player's best.

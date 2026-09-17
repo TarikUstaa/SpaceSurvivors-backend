@@ -1,5 +1,6 @@
 package com.tarikusta.spacesurvivors.web;
 
+import com.tarikusta.spacesurvivors.exception.AccountSuspendedException;
 import com.tarikusta.spacesurvivors.exception.AlreadyTakenException;
 import com.tarikusta.spacesurvivors.exception.AuthenticationFailedException;
 import com.tarikusta.spacesurvivors.exception.InvalidInputException;
@@ -64,6 +65,19 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(AuthenticationFailedException.class)
     public ProblemDetail authenticationFailed(AuthenticationFailedException e) {
         return problem(HttpStatus.UNAUTHORIZED, e.getMessage());
+    }
+
+    /**
+     * 403, with a machine-readable {@code code} and the operator's {@code reason}: the game shows
+     * the reason, and needs the code to tell "suspended" apart from any other refusal without
+     * parsing English.
+     */
+    @ExceptionHandler(AccountSuspendedException.class)
+    public ProblemDetail suspended(AccountSuspendedException e) {
+        ProblemDetail problem = problem(HttpStatus.FORBIDDEN, e.getMessage());
+        problem.setProperty("code", "account_suspended");
+        problem.setProperty("reason", e.reason());
+        return problem;
     }
 
     @ExceptionHandler(AlreadyTakenException.class)

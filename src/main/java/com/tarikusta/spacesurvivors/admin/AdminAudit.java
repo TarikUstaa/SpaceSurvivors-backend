@@ -143,6 +143,17 @@ public class AdminAudit {
         write(actor, AdminAction.ANNOUNCEMENT_CLEARED, null, "cleared the announcement", callerIp);
     }
 
+    public void playerSuspended(String actor, UUID playerId, String displayName, String reason,
+                                String callerIp) {
+        write(actor, AdminAction.PLAYER_SUSPENDED, String.valueOf(playerId),
+                "suspended '" + displayName + "': " + reason, callerIp);
+    }
+
+    public void playerUnsuspended(String actor, UUID playerId, String displayName, String callerIp) {
+        write(actor, AdminAction.PLAYER_UNSUSPENDED, String.valueOf(playerId),
+                "lifted the suspension of '" + displayName + "'", callerIp);
+    }
+
     public void playerRenamed(String actor, UUID playerId, String from, String to,
                               String callerIp) {
         write(actor, AdminAction.PLAYER_RENAMED, String.valueOf(playerId),

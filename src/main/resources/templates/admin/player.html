@@ -14,7 +14,8 @@
     <p class="crumb"><a th:href="@{/admin/players}">← All players</a></p>
 
     <h1><span th:text="${player.displayName}">Name</span>
-        <span class="pill test" th:if="${player.createdByAdmin}">TEST</span></h1>
+        <span class="pill test" th:if="${player.createdByAdmin}">TEST</span>
+        <span class="pill off" th:if="${player.suspended()}">SUSPENDED</span></h1>
     <p class="subtitle">
         <span th:if="${player.createdByAdmin}">Test player made in the backoffice — nobody can sign in as it. </span>
         Times in UTC.
@@ -46,6 +47,31 @@
                        maxlength="16" pattern="[A-Za-z0-9_]{3,16}" autocomplete="off" required>
             </div>
             <button type="submit" class="small">Rename</button>
+        </form>
+    </section>
+
+    <!-- Both roles: moderation, reversible, audited with the reason. -->
+    <section class="panel">
+        <h2>Suspension</h2>
+        <div th:if="${player.suspended()}">
+            <p>
+                Suspended since <span th:text="${player.suspendedOn()}">—</span>:
+                <strong th:text="${player.suspensionReason}">reason</strong>
+            </p>
+            <p class="muted small">Sign-in is refused with this reason, and their scores are hidden from the public board.</p>
+            <form th:action="@{'/admin/players/' + ${player.playerId} + '/unsuspend'}" method="post">
+                <button type="submit" class="small">Lift the suspension</button>
+            </form>
+        </div>
+        <p class="muted" th:unless="${player.suspended()}">Not suspended.</p>
+
+        <form th:action="@{'/admin/players/' + ${player.playerId} + '/suspend'}" method="post">
+            <div class="field">
+                <label for="reason" th:text="${player.suspended()} ? 'Change the reason' : 'Suspend, with a reason the player will see'">Reason</label>
+                <input type="text" id="reason" name="reason" maxlength="280" required
+                       placeholder="e.g. impossible scores on the leaderboard">
+            </div>
+            <button type="submit" class="danger" th:text="${player.suspended()} ? 'Update reason' : 'Suspend player'">Suspend player</button>
         </form>
     </section>
 
