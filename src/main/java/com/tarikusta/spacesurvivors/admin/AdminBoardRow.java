@@ -15,9 +15,10 @@ import java.util.UUID;
  * and a name would be the wrong thing to aim with, since names can be changed and two rows
  * can be one rename apart.</p>
  *
- * @param achievedAt when the run was recorded — the column that makes an implausible score
- *                   recognisable, because a suspicious run and the account that made it
- *                   usually appear within minutes of each other
+ * @param achievedAt     when the run was recorded — the column that makes an implausible score
+ *                       recognisable, because a suspicious run and the account that made it
+ *                       usually appear within minutes of each other
+ * @param createdByAdmin the row belongs to a test player (V6), so the score was set by hand
  */
 public record AdminBoardRow(
         UUID playerId,
@@ -27,7 +28,8 @@ public record AdminBoardRow(
         int kills,
         int reachedLevel,
         int bossesDefeated,
-        Instant achievedAt) {
+        Instant achievedAt,
+        boolean createdByAdmin) {
 
     private static final DateTimeFormatter MINUTE =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")

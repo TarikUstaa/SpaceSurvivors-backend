@@ -196,9 +196,10 @@ class AdminTestDataIntegrationTest {
                 .param("t", id.toString()).query(String.class).single();
         assertThat(summary).contains("1:00, 10 kills").contains("was 8:20, 400 kills");
 
-        // And it is on the board the game reads.
+        // And it is on the board the game reads, labelled for what it is.
         mvc.perform(get("/admin/leaderboard?mode=infinite").with(user(ADMIN).roles("ADMIN")))
-                .andExpect(content().string(containsString("Scorer")));
+                .andExpect(content().string(containsString("Scorer")))
+                .andExpect(content().string(containsString("pill test")));
     }
 
     @Test
@@ -212,6 +213,11 @@ class AdminTestDataIntegrationTest {
         mvc.perform(score(real, "campaign", "300", "100", "10", "1"))
                 .andExpect(flash().attributeExists("message"));
         assertThat(scoreRows(real)).isEqualTo(1);
+
+        // A real player's row carries no TEST label, even with a hand-set score.
+        mvc.perform(get("/admin/leaderboard?mode=campaign").with(user(ADMIN).roles("ADMIN")))
+                .andExpect(content().string(containsString("RealOne")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("pill test"))));
     }
 
     @Test
