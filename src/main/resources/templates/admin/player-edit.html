@@ -75,7 +75,7 @@
             <div class="field">
                 <label for="selectedShipId">Selected ship</label>
                 <input type="text" id="selectedShipId" name="selectedShipId" th:value="${form.selectedShipId}">
-                <span class="hint">Must be one of the owned ships, or empty.</span>
+                <span class="hint">One of the owned ships, <code>starter</code> (owned by everyone, never listed above), or empty — which the game also reads as the starter.</span>
             </div>
             <p class="muted small">
                 Ids are only checked for shape, not against the game's catalogue — the server does

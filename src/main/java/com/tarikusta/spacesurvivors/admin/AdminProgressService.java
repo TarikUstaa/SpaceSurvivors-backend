@@ -22,6 +22,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -76,6 +77,15 @@ public class AdminProgressService {
 
     static final String UPGRADES = "metaUpgradeLevels";
     static final String SELECTED_SHIP = "selectedShipId";
+
+    /**
+     * Hulls the game treats as owned without ever writing them into {@code ownedShipIds}: its
+     * {@code ShipService} counts the first catalogue entry and any free hull as owned implicitly.
+     * Today that is exactly one ship. The server has no catalogue, so the list is copied here by
+     * hand — if the game ever adds a second free hull, it has to be added here too, or selecting
+     * it from this form will be refused.
+     */
+    static final Set<String> IMPLICITLY_OWNED_SHIPS = Set.of("starter");
 
     /** Every id the game uses today looks like this: {@code first_blood}, {@code vanguard}. */
     private static final Pattern ID = Pattern.compile("^[a-z0-9_]{1,64}$");
@@ -214,11 +224,18 @@ public class AdminProgressService {
         }
 
         String selectedShip = trim(submitted.get(SELECTED_SHIP));
-        if (!selectedShip.isEmpty() && !lists.get("ownedShipIds").contains(selectedShip)) {
-            // Refused rather than quietly corrected. The game would fall back to the first owned
-            // ship, so this would not break anything — but a form that saves something other
-            // than what was typed is a form nobody can trust.
-            return Result.invalid(SELECTED_SHIP + " must be one of the owned ships, or empty.");
+        if (!selectedShip.isEmpty()
+                && !IMPLICITLY_OWNED_SHIPS.contains(selectedShip)
+                && !lists.get("ownedShipIds").contains(selectedShip)) {
+            // Refused rather than quietly corrected. The game would clear a selection it does not
+            // own back to blank — the starter — so this would not break anything, but a form that
+            // saves something other than what was typed is a form nobody can trust.
+            //
+            // Blank and the starter are both valid: the starter is owned without being listed, so
+            // checking only ownedShipIds made every save that had picked it uneditable until the
+            // operator cleared the field.
+            return Result.invalid(SELECTED_SHIP
+                    + " must be one of the owned ships, the starter, or empty.");
         }
 
         // ── compare, then write ─────────────────────────────────────────────────────────

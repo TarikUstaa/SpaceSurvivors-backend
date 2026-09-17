@@ -219,6 +219,39 @@ class AdminProgressEditIntegrationTest {
         assertThat(stored().path("wallet").asLong()).isEqualTo(777);
     }
 
+    @Test
+    @DisplayName("the starter can stay selected even though it is never in the owned list")
+    void theStarterIsOwnedWithoutBeingListed() throws Exception {
+        // The shape a real save has: the game counts the starter as owned implicitly and never
+        // writes it into ownedShipIds. This form used to refuse such a save outright — every edit
+        // failed until the operator cleared the selected ship.
+        db.sql("""
+                        UPDATE player_progress
+                        SET progress_data = jsonb_set(progress_data, '{ownedShipIds}', '["vanguard"]')
+                        WHERE player_id = :p""")
+                .param("p", player).update();
+
+        Map<String, String> form = unchangedForm();
+        form.put("ownedShipIds", "vanguard");
+        form.put("wallet", "4242");
+        mvc.perform(submit(form, "ADMIN"))
+                .andExpect(redirectedUrl("/admin/players/" + player))
+                .andExpect(flash().attributeExists("message"));
+
+        JsonNode save = stored();
+        assertThat(save.path("wallet").asLong()).isEqualTo(4242);
+        assertThat(save.path("selectedShipId").asString()).isEqualTo("starter");
+
+        // And blank, which the game reads as the starter too.
+        form = unchangedForm();
+        form.put("ownedShipIds", "vanguard");
+        form.put("wallet", "4242");
+        form.put("selectedShipId", "");
+        mvc.perform(submit(form, "ADMIN"))
+                .andExpect(flash().attributeExists("message"));
+        assertThat(stored().path("selectedShipId").asString()).isEmpty();
+    }
+
     // ── refusals that write nothing ────────────────────────────────────────────────────
 
     @Test

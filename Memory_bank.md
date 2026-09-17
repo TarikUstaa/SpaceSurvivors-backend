@@ -983,6 +983,14 @@ achievements, ships, upgrade levels, selected ship) and leaves every other prope
 a test puts an unknown `someFutureField` in and checks it survives. Ids are validated for shape
 (`[a-z0-9_]`), not against the game's catalogue, which the server does not have.
 
+**Fixed the same day — the starter.** The first version checked `selectedShipId` only against
+`ownedShipIds`, but the game counts its free hull as owned *without ever listing it*, so any save
+that had picked the starter was refused until the operator blanked the field. Found by the game-side
+session fixing the matching client bug (game `3ae6c5a`: a dangling selection now clears to blank,
+which reads as the starter, instead of jumping to `ownedShipIds[0]`). Blank and `starter` are now
+valid; `IMPLICITLY_OWNED_SHIPS` is a hand-copied list, because the server has no catalogue — a
+second free hull in the game would need adding there.
+
 **Refusals write nothing.** The form carries the version it was drawn from (the game may save while
 it is open → refused, redrawn); one bad field refuses the whole form; an unchanged form writes
 nothing and does **not** raise the revision (raising it would make the device discard local progress
