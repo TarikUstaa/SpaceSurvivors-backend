@@ -256,6 +256,38 @@ class AdminTestDataIntegrationTest {
         assertThat(scoreRows(id)).isZero();
     }
 
+    @Test
+    @DisplayName("deleting all test players takes only test players, and only with the phrase")
+    void deletesAllTestPlayers() throws Exception {
+        createPlayer("Bulk_A");
+        createPlayer("Bulk_B");
+        mvc.perform(score(idOf("Bulk_A"), "infinite", "100", "10", "1", "0"));
+        UUID real = db.sql("""
+                        INSERT INTO player_profile (device_id, display_name, device_secret_hash)
+                        VALUES (:d, 'KeepMe', 'x') RETURNING player_id""")
+                .param("d", "real-" + UUID.randomUUID()).query(UUID.class).single();
+
+        // Wrong phrase: nothing.
+        mvc.perform(post("/admin/test-players/delete").param("confirmation", "delete")
+                        .with(user(ADMIN).roles("ADMIN")).with(csrf()))
+                .andExpect(flash().attributeExists("warning"));
+        assertThat(playersNamed("Bulk_A")).isEqualTo(1);
+
+        mvc.perform(post("/admin/test-players/delete").param("confirmation", "delete test players")
+                        .with(user(ADMIN).roles("ADMIN")).with(csrf()))
+                .andExpect(redirectedUrl("/admin/players"))
+                .andExpect(flash().attributeExists("message"));
+
+        assertThat(db.sql("SELECT count(*) FROM player_profile WHERE created_by_admin")
+                .query(Long.class).single()).isZero();
+        assertThat(playersNamed("KeepMe")).isEqualTo(1);
+        assertThat(db.sql("SELECT count(*) FROM leaderboard l JOIN player_profile p USING (player_id) WHERE p.created_by_admin")
+                .query(Long.class).single()).isZero();
+        assertThat(db.sql("SELECT count(*) FROM admin_audit WHERE action = 'TEST_PLAYERS_DELETED'")
+                .query(Long.class).single()).isEqualTo(1);
+        assertThat(real).isNotNull();
+    }
+
     // ── SUPPORT may do neither ─────────────────────────────────────────────────────────
 
     @Test
@@ -277,6 +309,11 @@ class AdminTestDataIntegrationTest {
 
         assertThat(playersNamed("BySupport")).isZero();
         assertThat(scoreRows(id)).isZero();
+
+        mvc.perform(post("/admin/test-players/delete").param("confirmation", "delete test players")
+                        .with(user("support-td").roles("SUPPORT")).with(csrf()))
+                .andExpect(redirectedUrl("/admin/forbidden"));
+        assertThat(playersNamed("NoSupport")).isEqualTo(1);
 
         // Not offered on the pages either.
         mvc.perform(get("/admin/players").with(user("support-td").roles("SUPPORT")))

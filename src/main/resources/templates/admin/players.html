@@ -37,6 +37,20 @@
             For testing the list and the leaderboard. Nobody can sign in as it — it has no device.
             Its scores are public; delete the player to remove them.
         </p>
+
+        <div th:if="${testCount > 0}">
+            <h3>Delete all test players (<span th:text="${testCount}">0</span>)</h3>
+            <form th:action="@{/admin/test-players/delete}" method="post" class="inline-form">
+                <div class="field inline">
+                    <label for="confirmation">
+                        Type <strong th:text="${deletePhrase}">delete test players</strong> to confirm
+                    </label>
+                    <input type="text" id="confirmation" name="confirmation" autocomplete="off" required>
+                </div>
+                <button type="submit" class="danger solid">Delete all test players</button>
+            </form>
+            <p class="muted small">Only players carrying the TEST label. Real players are never touched.</p>
+        </div>
     </section>
 
     <div class="table-wrap">

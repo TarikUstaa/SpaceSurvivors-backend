@@ -43,6 +43,9 @@ public enum AdminAction {
     /** A test player was made up in the backoffice. Nobody can sign in as it. */
     TEST_PLAYER_CREATED,
 
+    /** Every test player was removed at once, with their saves and scores. */
+    TEST_PLAYERS_DELETED,
+
     /**
      * A player's cloud save was edited by hand. The summary lists every field that changed, old
      * value and new — the save itself is overwritten, so this row is the only place the previous

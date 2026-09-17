@@ -92,6 +92,20 @@ public interface AdminPlayerQueries extends Repository<PlayerProfile, UUID> {
     @Query("select p.playerId from PlayerProfile p where p.deviceId = :deviceId")
     Optional<UUID> findIdByDeviceId(@Param("deviceId") String deviceId);
 
+    @Query("select count(p) from PlayerProfile p where p.createdByAdmin = true")
+    long countTestPlayers();
+
+    /**
+     * Every test player at once, with their saves and scores (the database's cascade, as for a
+     * single delete). Written against the flag alone: nothing a real device can do sets it, so
+     * this cannot reach a real player however many there are.
+     *
+     * @return how many players were removed
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("DELETE FROM PlayerProfile p WHERE p.createdByAdmin = true")
+    int deleteTestPlayers();
+
     /**
      * Delete a player, and with them everything that hangs off them.
      *

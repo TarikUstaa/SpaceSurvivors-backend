@@ -95,6 +95,8 @@ public class AdminController {
         model.addAttribute("players", overview.rows());
         model.addAttribute("playerCount", overview.total());
         model.addAttribute("savedCount", overview.withSaves());
+        model.addAttribute("testCount", overview.testPlayers());
+        model.addAttribute("deletePhrase", AdminPlayerService.DELETE_TEST_PLAYERS_PHRASE);
         model.addAttribute("admin", authentication.getName());
         return "admin/players";
     }
@@ -147,6 +149,29 @@ public class AdminController {
                 yield "redirect:/admin/players";
             }
         };
+    }
+
+    /**
+     * Remove every test player. Not under {@code /players/}, where "test" would read as a player id
+     * to the {@code /players/{playerId}/delete} mapping and its URL rule.
+     */
+    @PostMapping("/test-players/delete")
+    public String deleteTestPlayers(@RequestParam(required = false) String confirmation,
+                                    RedirectAttributes redirect,
+                                    Authentication authentication,
+                                    HttpServletRequest request) {
+        AdminPlayerService.TestCleanup result = players.deleteTestPlayers(
+                authentication.getName(), confirmation, ClientAddress.of(request));
+
+        if (!result.confirmed()) {
+            redirect.addFlashAttribute("warning", "Nothing was deleted — type the phrase exactly.");
+        } else if (result.deleted() == 0) {
+            redirect.addFlashAttribute("warning", "There were no test players to delete.");
+        } else {
+            redirect.addFlashAttribute("message", "Deleted " + result.deleted()
+                    + " test players, their saves and their scores.");
+        }
+        return "redirect:/admin/players";
     }
 
     /** Set one score by hand. Every outcome returns to the player, where the scores are listed. */

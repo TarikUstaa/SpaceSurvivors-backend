@@ -44,8 +44,20 @@ public class AdminPlayerService {
     public record Deletion(Outcome outcome, String displayName) {
     }
 
-    /** The list page, with the two numbers printed above it. */
-    public record Overview(List<AdminPlayerRow> rows, int total, long withSaves) {
+    /** The list page, with the numbers printed above it. */
+    public record Overview(List<AdminPlayerRow> rows, int total, long withSaves, long testPlayers) {
+    }
+
+    /**
+     * What an operator types to delete every test player. A sentence rather than a name,
+     * because there is no single name to type — and a sentence that says what will happen.
+     */
+    public static final String DELETE_TEST_PLAYERS_PHRASE = "delete test players";
+
+    /**
+     * @param deleted how many went; meaningful only when {@code confirmed}
+     */
+    public record TestCleanup(boolean confirmed, int deleted) {
     }
 
     /** How a test player creation ended. */
@@ -84,7 +96,8 @@ public class AdminPlayerService {
     public Overview overview() {
         List<AdminPlayerRow> rows = players.listAll();
         return new Overview(rows, rows.size(),
-                rows.stream().filter(AdminPlayerRow::hasSave).count());
+                rows.stream().filter(AdminPlayerRow::hasSave).count(),
+                players.countTestPlayers());
     }
 
     @Transactional(readOnly = true)
@@ -134,6 +147,29 @@ public class AdminPlayerService {
             }
         }
         return new Created(Creation.NAME_TAKEN, null, typed, null);
+    }
+
+    /**
+     * Remove every test player, once the phrase has been typed.
+     *
+     * <p>The same shape as deleting one player: a condition on the request, checked here, not a
+     * dialog in the browser. Zero test players is still a confirmed run that deleted nothing —
+     * and is not audited, for the reason {@link #delete} gives: nothing happened.</p>
+     */
+    @Transactional
+    @PreAuthorize(AdminRole.IS_ADMIN)
+    public TestCleanup deleteTestPlayers(String actor, String confirmation, String callerIp) {
+        String typed = confirmation == null ? "" : confirmation.trim();
+        if (!DELETE_TEST_PLAYERS_PHRASE.equals(typed)) {
+            return new TestCleanup(false, 0);
+        }
+
+        int deleted = players.deleteTestPlayers();
+        if (deleted > 0) {
+            audit.testPlayersDeleted(actor, deleted, callerIp);
+            log.warn("admin '{}' deleted all {} test players", actor, deleted);
+        }
+        return new TestCleanup(true, deleted);
     }
 
     /** 32 random bytes. Returned only to be hashed; nothing keeps it. */

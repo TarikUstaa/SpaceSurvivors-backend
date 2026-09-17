@@ -91,7 +91,8 @@ public class AdminSecurityConfig {
                         // ADMIN only: who may sign in, what everybody did, and the one action
                         // with no undo. "/**" also matches the bare path, so /admin/users itself
                         // is covered and not only what lies beneath it.
-                        .requestMatchers("/admin/users/**", "/admin/audit/**").hasRole("ADMIN")
+                        .requestMatchers("/admin/users/**", "/admin/audit/**",
+                                "/admin/test-players/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/admin/players/*/delete").hasRole("ADMIN")
                         // Invented players and scores are public the moment they are written.
                         .requestMatchers(HttpMethod.POST,
