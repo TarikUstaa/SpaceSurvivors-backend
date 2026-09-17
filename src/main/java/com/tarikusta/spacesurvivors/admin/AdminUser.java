@@ -54,6 +54,13 @@ public class AdminUser {
     @Column(name = "must_change_password", nullable = false)
     private boolean mustChangePassword;
 
+    /**
+     * Raised whenever every existing session of this account should end — see
+     * V8__admin_session_epoch.sql and {@link AdminSessionGuard}.
+     */
+    @Column(name = "session_epoch", nullable = false)
+    private int sessionEpoch;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
@@ -130,6 +137,15 @@ public class AdminUser {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public int getSessionEpoch() {
+        return sessionEpoch;
+    }
+
+    /** Signs out every session of this account on its next request. */
+    public void endAllSessions() {
+        sessionEpoch++;
     }
 
     public boolean isMustChangePassword() {

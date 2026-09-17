@@ -209,6 +209,10 @@ public class AdminSecurityConfig {
                 throws IOException, ServletException {
             admins.findByUsernameIgnoreCase(authentication.getName())
                     .ifPresent(admin -> {
+                        // The session remembers which epoch it signed in under; AdminSessionGuard
+                        // ends it once the account's epoch moves on (V8).
+                        request.getSession().setAttribute(AdminSessionGuard.EPOCH_ATTRIBUTE,
+                                admin.getSessionEpoch());
                         admin.setLastLoginAt(Instant.now());
                         // Saved explicitly: this runs outside any transaction of ours, so
                         // there is no persistence context that would flush the change on

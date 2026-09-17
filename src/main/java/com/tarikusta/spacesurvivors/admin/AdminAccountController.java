@@ -67,8 +67,13 @@ public class AdminAccountController {
                 ClientAddress.of(request));
 
         switch (result) {
-            case CHANGED -> redirect.addFlashAttribute("message",
-                    "Password changed. It is the one to use next time you sign in.");
+            case CHANGED -> {
+                // This session survives the change; every other one of this account does not.
+                request.getSession().setAttribute(AdminSessionGuard.EPOCH_ATTRIBUTE,
+                        accounts.sessionEpochOf(authentication.getName()));
+                redirect.addFlashAttribute("message", "Password changed. Any other session "
+                        + "signed in to this account has been signed out.");
+            }
             case WRONG_CURRENT_PASSWORD -> redirect.addFlashAttribute("warning",
                     "That is not your current password.");
             case TOO_SHORT -> redirect.addFlashAttribute("warning",

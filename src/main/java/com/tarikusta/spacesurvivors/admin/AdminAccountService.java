@@ -93,6 +93,9 @@ public class AdminAccountService {
         // The owner has now chosen their own, so a temporary one somebody else saw is gone and
         // AdminSessionGuard stops sending every page to this form.
         admin.setMustChangePassword(false);
+        // Every other session signed in with the old password ends on its next request; the
+        // controller hands the caller's own session the new epoch so it is not one of them.
+        admin.endAllSessions();
         admins.save(admin);
 
         // Audited here rather than in the controller, and inside this transaction, so the new
@@ -103,6 +106,12 @@ public class AdminAccountService {
 
         log.info("admin '{}' changed their password", username);
         return Result.CHANGED;
+    }
+
+    /** The account's current session epoch, for the session that just changed the password. */
+    @Transactional(readOnly = true)
+    public int sessionEpochOf(String username) {
+        return admins.findByUsernameIgnoreCase(username).map(AdminUser::getSessionEpoch).orElse(0);
     }
 
     private static String nullToEmpty(String value) {

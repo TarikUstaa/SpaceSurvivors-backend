@@ -207,6 +207,9 @@ public class AdminUserService {
             String temporary = temporaryPassword();
             account.setPasswordHash(passwordEncoder.encode(temporary));
             account.setMustChangePassword(true);
+            // A reset is for a forgotten password — or one somebody else may know. Either way,
+            // no session signed in with the old one should keep working.
+            account.endAllSessions();
             audit.accountPasswordReset(actor, account.getUsername(), callerIp);
             log.info("admin '{}' reset the password of '{}'", actor, account.getUsername());
             return new Result(Outcome.DONE, account.getUsername(), temporary);

@@ -34,6 +34,8 @@ import java.util.stream.Collectors;
  *   <li>the role in the row is not the role in the session → signed out, to sign in again with
  *       the right one. Not silently upgraded or downgraded in place — a person whose permissions
  *       changed should notice that they did;</li>
+ *   <li>the account's password changed since this session signed in (the session epoch, V8) →
+ *       signed out;</li>
  *   <li>the account still has a password somebody else chose → every page except the password
  *       form redirects to it.</li>
  * </ul>
@@ -54,6 +56,9 @@ import java.util.stream.Collectors;
 final class AdminSessionGuard extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(AdminSessionGuard.class);
+
+    /** The session attribute holding the account's session epoch as of sign-in (V8). */
+    static final String EPOCH_ATTRIBUTE = "admin.sessionEpoch";
 
     /** Reachable while a password change is being forced, or there would be no way to do it. */
     private static final Set<String> PASSWORD_FLOW = Set.of("/admin/password", "/admin/logout");
@@ -83,10 +88,13 @@ final class AdminSessionGuard extends OncePerRequestFilter {
 
         AdminUser admin = admins.findByUsernameIgnoreCase(auth.getName()).orElse(null);
 
-        if (admin == null || !admin.isEnabled() || !holds(auth, admin.getRole())) {
+        if (admin == null || !admin.isEnabled() || !holds(auth, admin.getRole())
+                || epochOf(request) != admin.getSessionEpoch()) {
             log.info("ended the backoffice session of '{}': account {}", auth.getName(),
                     admin == null ? "no longer exists"
-                            : !admin.isEnabled() ? "was disabled" : "changed role");
+                            : !admin.isEnabled() ? "was disabled"
+                            : !holds(auth, admin.getRole()) ? "changed role"
+                            : "had its password changed");
             endSession(request);
             response.sendRedirect(request.getContextPath() + "/admin/login?revoked");
             return;
@@ -110,6 +118,17 @@ final class AdminSessionGuard extends OncePerRequestFilter {
                 .filter(a -> a.startsWith("ROLE_"))
                 .collect(Collectors.toSet());
         return granted.equals(Set.of("ROLE_" + role));
+    }
+
+    /**
+     * The epoch this session signed in under. No attribute reads as 0, the column's default — so a
+     * session from before V8, or one a test built without signing in, is valid until its account's
+     * first password change.
+     */
+    private static int epochOf(HttpServletRequest request) {
+        HttpSession session = request.getSession(false);
+        Object value = session == null ? null : session.getAttribute(EPOCH_ATTRIBUTE);
+        return value instanceof Integer epoch ? epoch : 0;
     }
 
     private static void endSession(HttpServletRequest request) {
