@@ -25,6 +25,15 @@
            th:classappend="${m == mode} ? 'active'">mode</a>
     </div>
 
+    <!-- ADMIN only, like setting a score by hand. Every mode at once; the test players stay. -->
+    <form th:if="${isAdmin and testScoreCount > 0}" th:action="@{/admin/leaderboard/test-scores/delete}"
+          method="post" class="confirm inline-form"
+          th:attr="data-confirm=|Remove all ${testScoreCount} test scores from every mode?|">
+        <input type="hidden" name="mode" th:value="${mode}">
+        <button type="submit" class="danger">Remove all test scores (<span th:text="${testScoreCount}">0</span>)</button>
+        <span class="muted small">Every mode. Only players carrying the TEST label; the players themselves stay.</span>
+    </form>
+
     <div class="table-wrap">
         <table>
             <thead>

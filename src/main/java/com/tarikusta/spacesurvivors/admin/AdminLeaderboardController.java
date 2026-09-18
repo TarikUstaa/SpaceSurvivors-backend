@@ -49,6 +49,7 @@ public class AdminLeaderboardController {
         model.addAttribute("mode", selected);
         model.addAttribute("modes", board.modes());
         model.addAttribute("rows", board.rows(selected));
+        model.addAttribute("testScoreCount", board.testScoreCount());
         model.addAttribute("admin", authentication.getName());
         return "admin/leaderboard";
     }
@@ -74,5 +75,21 @@ public class AdminLeaderboardController {
         }
 
         return "redirect:/admin/leaderboard?mode=" + selected;
+    }
+
+    @PostMapping("/test-scores/delete")
+    public String deleteTestScores(@RequestParam(required = false) String mode,
+                                   RedirectAttributes redirect,
+                                   Authentication authentication,
+                                   HttpServletRequest request) {
+        int removed = board.removeTestScores(authentication.getName(), ClientAddress.of(request));
+
+        if (removed == 0) {
+            redirect.addFlashAttribute("warning", "There were no test scores to remove.");
+        } else {
+            redirect.addFlashAttribute("message", "Removed " + removed
+                    + " test scores from every mode. The test players are still there.");
+        }
+        return "redirect:/admin/leaderboard?mode=" + board.normalise(mode);
     }
 }

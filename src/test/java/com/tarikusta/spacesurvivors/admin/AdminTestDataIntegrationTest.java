@@ -288,6 +288,43 @@ class AdminTestDataIntegrationTest {
         assertThat(real).isNotNull();
     }
 
+    @Test
+    @DisplayName("removing all test scores empties them from every mode and keeps players and real scores")
+    void removesAllTestScores() throws Exception {
+        createPlayer("Scored_A");
+        UUID a = idOf("Scored_A");
+        mvc.perform(score(a, "infinite", "100", "10", "1", "0"));
+        mvc.perform(score(a, "campaign", "100", "10", "1", "0"));
+        UUID real = db.sql("""
+                        INSERT INTO player_profile (device_id, display_name, device_secret_hash)
+                        VALUES (:d, 'RealScorer', 'x') RETURNING player_id""")
+                .param("d", "real-" + UUID.randomUUID()).query(UUID.class).single();
+        db.sql("""
+                INSERT INTO leaderboard (player_id, mode, survived_seconds, kills, reached_level, bosses_defeated)
+                VALUES (:p, 'infinite', 200, 20, 2, 0)""").param("p", real).update();
+
+        mvc.perform(get("/admin/leaderboard").with(user(ADMIN).roles("ADMIN")))
+                .andExpect(content().string(containsString("Remove all test scores")));
+
+        mvc.perform(post("/admin/leaderboard/test-scores/delete").param("mode", "campaign")
+                        .with(user(ADMIN).roles("ADMIN")).with(csrf()))
+                .andExpect(redirectedUrl("/admin/leaderboard?mode=campaign"))
+                .andExpect(flash().attributeExists("message"));
+
+        assertThat(scoreRows(a)).isZero();
+        assertThat(playersNamed("Scored_A")).isEqualTo(1);
+        assertThat(scoreRows(real)).isEqualTo(1);
+        assertThat(db.sql("SELECT count(*) FROM admin_audit WHERE action = 'TEST_SCORES_REMOVED'")
+                .query(Long.class).single()).isEqualTo(1);
+
+        // Nothing left: a warning, and no second audit row.
+        mvc.perform(post("/admin/leaderboard/test-scores/delete")
+                        .with(user(ADMIN).roles("ADMIN")).with(csrf()))
+                .andExpect(flash().attributeExists("warning"));
+        assertThat(db.sql("SELECT count(*) FROM admin_audit WHERE action = 'TEST_SCORES_REMOVED'")
+                .query(Long.class).single()).isEqualTo(1);
+    }
+
     // ── SUPPORT may do neither ─────────────────────────────────────────────────────────
 
     @Test
@@ -315,6 +352,14 @@ class AdminTestDataIntegrationTest {
                 .andExpect(redirectedUrl("/admin/forbidden"));
         assertThat(playersNamed("NoSupport")).isEqualTo(1);
 
+        mvc.perform(score(id, "infinite", "100", "10", "1", "0"));
+        mvc.perform(post("/admin/leaderboard/test-scores/delete")
+                        .with(user("support-td").roles("SUPPORT")).with(csrf()))
+                .andExpect(redirectedUrl("/admin/forbidden"));
+        assertThat(scoreRows(id)).isEqualTo(1);
+        mvc.perform(get("/admin/leaderboard").with(user("support-td").roles("SUPPORT")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("Remove all test scores"))));
+
         // Not offered on the pages either.
         mvc.perform(get("/admin/players").with(user("support-td").roles("SUPPORT")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(containsString("New test player"))));
@@ -328,6 +373,8 @@ class AdminTestDataIntegrationTest {
                 .isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> boardService.setScore("support-td", UUID.randomUUID(),
                 "infinite", "100", "1", "1", "0", null))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> boardService.removeTestScores("support-td", null))
                 .isInstanceOf(AccessDeniedException.class);
     }
 }

@@ -211,4 +211,28 @@ public class AdminBoardService {
         log.info("admin '{}' removed the {} score of player {}", actor, selected, playerId);
         return true;
     }
+
+    @Transactional(readOnly = true)
+    public long testScoreCount() {
+        return queries.countTestEntries();
+    }
+
+    /**
+     * Remove every test player's score, in every mode. The test players themselves stay.
+     *
+     * <p>ADMIN only, like {@link #setScore}: the two are one feature, filling a board by hand and
+     * emptying it again. Audited once with the count, and only when something was removed.</p>
+     *
+     * @return the number of scores removed
+     */
+    @Transactional
+    @PreAuthorize(AdminRole.IS_ADMIN)
+    public int removeTestScores(String actor, String callerIp) {
+        int removed = queries.deleteTestEntries();
+        if (removed > 0) {
+            audit.testScoresRemoved(actor, removed, callerIp);
+            log.info("admin '{}' removed all {} test-player scores", actor, removed);
+        }
+        return removed;
+    }
 }

@@ -70,6 +70,9 @@ public enum AdminAction {
     /** Every test player was removed at once, with their saves and scores. */
     TEST_PLAYERS_DELETED,
 
+    /** Every test player's score was taken off the board at once. The test players stayed. */
+    TEST_SCORES_REMOVED,
+
     /**
      * A player's cloud save was edited by hand. The summary lists every field that changed, old
      * value and new — the save itself is overwritten, so this row is the only place the previous

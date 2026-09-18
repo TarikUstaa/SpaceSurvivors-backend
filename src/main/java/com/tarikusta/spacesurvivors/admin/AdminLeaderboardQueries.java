@@ -106,4 +106,27 @@ public interface AdminLeaderboardQueries extends Repository<LeaderboardEntry, Le
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("DELETE FROM LeaderboardEntry e WHERE e.playerId = :playerId AND e.mode = :mode")
     int deleteEntry(@Param("playerId") UUID playerId, @Param("mode") String mode);
+
+    /** How many board rows belong to test players, across every mode — the number the button shows. */
+    @Query("""
+            SELECT count(e) FROM LeaderboardEntry e
+             WHERE e.playerId IN (SELECT p.playerId FROM PlayerProfile p WHERE p.createdByAdmin = true)
+            """)
+    long countTestEntries();
+
+    /**
+     * Take every test player's score off the board, in every mode, and keep the players.
+     *
+     * <p>The other half of {@link #setEntry}: a board filled by hand for a test needs emptying the
+     * same way, without also losing the test players and having to make them again. The filter is
+     * the {@code created_by_admin} flag and nothing else, so a real player's row cannot match.</p>
+     *
+     * @return the number of rows removed
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            DELETE FROM LeaderboardEntry e
+             WHERE e.playerId IN (SELECT p.playerId FROM PlayerProfile p WHERE p.createdByAdmin = true)
+            """)
+    int deleteTestEntries();
 }

@@ -170,6 +170,11 @@ public class AdminAudit {
                 "deleted all " + count + " test players, their saves and their scores", callerIp);
     }
 
+    public void testScoresRemoved(String actor, int count, String callerIp) {
+        write(actor, AdminAction.TEST_SCORES_REMOVED, null,
+                "removed all " + count + " test-player scores from the board", callerIp);
+    }
+
     public void testPlayerCreated(String actor, UUID playerId, String displayName,
                                   String callerIp) {
         write(actor, AdminAction.TEST_PLAYER_CREATED, String.valueOf(playerId),
